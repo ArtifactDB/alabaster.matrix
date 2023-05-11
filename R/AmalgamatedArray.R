@@ -31,7 +31,7 @@
 #' @examples
 #' first <- Matrix::rsparsematrix(10, 10, 0.1)
 #' second <- Matrix::rsparsematrix(10, 20, 0.1)
-#' mat <- AmalgamatedArray(foo = first, bar = second)
+#' mat <- AmalgamatedArray(list(foo = first, bar = second), along=2)
 #' mat
 #'
 #' componentNames(mat)
@@ -41,13 +41,16 @@
 #' @aliases
 #' AmalgamatedArray
 #' AmalgamatedArray-class
+#' AmalgamatedMatrix-class
 #' AmalgamatedArraySeed
 #' AmalgamatedArraySeed-class
 #' DelayedArray,AmalgamatedArraySeed-method
 #' matrixClass,AmalgamatedArray-method
-#' listSamples
-#' extractSamples
+#' componentNames
+#' extractComponents
 #' stageObject,AmalgamatedArray-method
+#' coerce,AmalgamatedArray,AmalgamatedMatrix-method
+#' coerce,AmalgamatedMatrix,AmalgamatedArray-method
 #' 
 #' @name AmalgamatedArray
 NULL
@@ -61,17 +64,22 @@ AmalgamatedArraySeed <- function(components, along = 1) {
     }
 
     FUN <- if (along == 1) arbind else acbind
-    combined <- do.call(cbind, lapply(components, DelayedArray))
+    combined <- do.call(FUN, lapply(components, DelayedArray))
     new("AmalgamatedArraySeed", combined@seed, samples = sample.names)
 }
 
 #' @export
-#' @importFrom DelayedArray new_DelayedArray
+#' @importFrom DelayedArray DelayedArray new_DelayedArray
 setMethod("DelayedArray", "AmalgamatedArraySeed", function(seed) new_DelayedArray(seed, Class="AmalgamatedArray"))
 
 #' @export
-#' @importFrom DelayedArray new_DelayedArray
+#' @importFrom DelayedArray matrixClass
 setMethod("matrixClass", "AmalgamatedArray", function(x) "AmalgamatedMatrix")
+
+# Overrides copied from DelayedArray::ConstantArray.
+#' @importFrom S4Vectors new2
+setAs("AmalgamatedArray", "AmalgamatedMatrix", function(from) new2("AmalgamatedMatrix", from))
+setAs("AmalgamatedMatrix", "AmalgamatedArray", function(from) from)
 
 #' @export
 AmalgamatedArray <- function(components, along = 1) {
@@ -106,11 +114,12 @@ extractComponents <- function(x) {
 setMethod("stageObject", "AmalgamatedArray", function(x, dir, path, child = FALSE) {
     dir.create(file.path(dir, path), showWarnings=FALSE)
 
-    seeds <- x@seed@seeds
+    seed <- x@seed
+    seeds <- seed@seeds
     components <- vector("list", length(seeds))
     for (i in seq_along(seeds)) {
-        meta <- .stageObject(seeds[[i]], x, dir, paste0(path, "/component", i), child = child)
-        components[[i]] <- list(name = x@samples[i], resource = .writeMetadata(meta, dir))
+        meta <- .stageObject(seeds[[i]], dir, paste0(path, "/component", i), child = TRUE)
+        components[[i]] <- list(name = seed@samples[i], resource = .writeMetadata(meta, dir))
     }
 
     list(
@@ -128,12 +137,16 @@ setMethod("stageObject", "AmalgamatedArray", function(x, dir, path, child = FALS
 #' @importFrom alabaster.base acquireMetadata .loadObject
 .load_amalgamated_array <- function(info, project) {
     comp <- info$amalgamated_array$components
+    all.names <- character(length(comp))
 
     for (i in seq_along(comp)) {
-        imeta <- acquireMetadata(project, comp[[i]])
+        current <- comp[[i]]
+        imeta <- acquireMetadata(project, current$resource$path)
+        all.names[i] <- current$name
         comp[[i]] <- .loadObject(imeta, project)
     }
-    names(comp) <- vapply(comp, function(x) x$name, "")
 
+    names(comp) <- all.names
     AmalgamatedArraySeed(comp, along = info$amalgamated_array$along + 1L)
 }
+

@@ -4,8 +4,12 @@ setClass("WrapperArraySeed", contains="VIRTUAL", slots=c(seed="ANY"))
 
 #' @export
 #' @importClassesFrom DelayedArray DelayedAbind
-setClass("MultiSampleMatrixSeed", contains="DelayedAbind", slots=c(samples = "character"))
+setClass("AmalgamatedArraySeed", contains="DelayedAbind", slots=c(samples = "character"))
+
+#' @export
+#' @importClassesFrom DelayedArray DelayedArray
+setClass("AmalgamatedArray", contains="DelayedArray", slots=c(seed = "AmalgamatedArraySeed"))
 
 #' @export
 #' @importClassesFrom DelayedArray DelayedMatrix
-setClass("MultiSampleMatrix", contains="DelayedMatrix", slots=c(seed = "MultiSampleMatrixSeed"))
+setClass("AmalgamatedMatrix", contains=c("AmalgamatedArray", "DelayedMatrix"))
