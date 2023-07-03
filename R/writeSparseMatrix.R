@@ -328,15 +328,22 @@ setMethod(".dump_column_sparse_matrix", "DelayedAbind", function(x, handle, inde
     unlist(collected)
 })
 
-#' @importFrom DelayedArray colAutoGrid read_sparse_block
+#' @importFrom DelayedArray colAutoGrid
+#' @importFrom SparseArray read_block_as_sparse
 setMethod(".dump_column_sparse_matrix", "ANY", function(x, handle, index.path, data.path, start) {
+    if (!is(x, "DelayedMatrix")) { 
+        # read_block_as_sparse() is apparently not defined for the individual
+        # delayed operations, so we need to wrap it all in a DelayedArray.
+        x <- DelayedArray(x)
+    }
+
     start <- .sanitize_start(start)
     grid <- colAutoGrid(x)
     out <- vector("list", length(grid))
 
     for (i in seq_along(grid)) {
-        block <- read_sparse_block(x, grid[[i]])
-        cout <- .blockwise_sparse_writer(block, start, file=handle, index.path=index.path, data.path=data.path, by_column=TRUE)
+        block <- read_block_as_sparse(x, grid[[i]])
+        cout <- .blockwise_sparse_writer(block, start, file=handle, index.path=index.path, data.path=data.path, by.column=TRUE)
         out[[i]] <- cout$number
         start <- cout$last
     }
@@ -344,15 +351,20 @@ setMethod(".dump_column_sparse_matrix", "ANY", function(x, handle, index.path, d
     unlist(out)
 })
 
-#' @importFrom DelayedArray rowAutoGrid read_sparse_block
+#' @importFrom DelayedArray rowAutoGrid
+#' @importFrom SparseArray read_block_as_sparse
 .dump_row_sparse_matrix <- function(x, handle, index.path, data.path, start) {
+    if (!is(x, "DelayedMatrix")) {
+        x <- DelayedArray(x)
+    }
+
     start <- .sanitize_start(start)
     grid <- rowAutoGrid(x)
     out <- vector("list", length(grid))
 
     for (i in seq_along(grid)) {
-        block <- read_sparse_block(x, grid[[i]])
-        cout <- .blockwise_sparse_writer(block, start, file=handle, index.path=index.path, data.path=data.path, by_column=FALSE)
+        block <- read_block_as_sparse(x, grid[[i]])
+        cout <- .blockwise_sparse_writer(block, start, file=handle, index.path=index.path, data.path=data.path, by.column=FALSE)
         out[[i]] <- cout$number
         start <- cout$last
     }
@@ -360,30 +372,42 @@ setMethod(".dump_column_sparse_matrix", "ANY", function(x, handle, index.path, d
     unlist(out)
 }
 
-#' @importFrom DelayedArray nzindex nzdata
+#' @importFrom SparseArray nzcoo nzdata 
 #' @importFrom rhdf5 h5writeDataset
-.blockwise_sparse_writer <- function(block, last, file, index.path, data.path, by_column) {
-    nzdex <- nzindex(block)
-    if (by_column) {
-        primary <- nzdex[, 2]
-        secondary <- nzdex[, 1]
+#' @importFrom Matrix t
+.blockwise_sparse_writer <- function(block, last, file, index.path, data.path, by.column) {
+    if (is(block, "SVT_SparseMatrix")) {
+        if (!by.column) {
+            block <- t(block)
+        }
+
+        secondary <- unlist(lapply(block@SVT, function(x) x[[1]]))
+        values <- unlist(lapply(block@SVT, function(x) x[[2]]))
         ndim <- ncol(block)
+        counts <- vapply(block@SVT, function(x) length(x[[1]]), 0L)
+
     } else {
-        primary <- nzdex[, 1]
-        secondary <- nzdex[, 2]
-        ndim <- nrow(block)
+        nzcoords <- nzcoo(block)
+        if (by.column) {
+            secondary <- nzcoords[,1]
+            primary <- nzcoords[,2]
+            ndim <- ncol(block)
+        } else {
+            secondary <- nzcoords[,2]
+            primary <- nzcoords[,1]
+            ndim <- nrow(block)
+        }
+
+        o <- order(primary, secondary)
+        secondary <- secondary[o] - 1L
+        values <- nzdata(block)[o]
+        counts <- tabulate(primary, ndim)
     }
-    v <- nzdata(block)
 
-    o <- order(primary, secondary)
-    primary <- primary[o]
-    secondary <- secondary[o]
-    v <- v[o]
+    newlast <- last + length(secondary)
+    index <- list(last + seq_along(secondary))
+    h5writeDataset(secondary, file, index.path, index = index)
+    h5writeDataset(values, file, data.path, index = index)
 
-    newlast <- last + length(primary)
-    index <- list(last + seq_along(primary))
-    h5writeDataset(secondary - 1L, file, index.path, index = index)
-    h5writeDataset(v, file, data.path, index = index)
-
-    list(number=tabulate(primary, ndim), last=newlast)
+    list(number=counts, last=newlast)
 }
