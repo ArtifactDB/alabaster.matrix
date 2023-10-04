@@ -56,31 +56,30 @@ NULL
 #' @importFrom DelayedArray is_sparse
 #' @importFrom rhdf5 h5createFile 
 #' @importFrom HDF5Array writeHDF5Array
-#' @importFrom alabaster.base .chooseMissingStringPlaceholder .addMissingStringPlaceholderAttribute
-.stage_array <- function(x, dir, path, child=FALSE) {
+#' @importFrom alabaster.base transformVectorForHdf5 addMissingPlaceholderAttributeForHdf5
+.stage_array <- function(x, dir, path, child=FALSE, .version=2) {
     dir.create(file.path(dir, path), showWarnings=FALSE)
     xpath <- paste0(path, "/array.h5")
     ofile <- file.path(dir, xpath)
 
-    missing.placeholder <- NULL
-    if (type(x) == "character" && anyNA(x)) {
-        missing.placeholder <- .chooseMissingStringPlaceholder(x)
-        x[is.na(x)] <- missing.placeholder
-    }
+    array.info <- .grab_array_type(x)
+    transformed <- transformVectorForHdf5(x)
+    x <- transformed$transformed
+    missing.placeholder <- transformed$placeholder
 
     h5createFile(ofile)
     writeHDF5Array(x, filepath=ofile, name="data")
     nm <- .name_saver(x, ofile)
 
     if (!is.null(missing.placeholder)) {
-        .addMissingStringPlaceholderAttribute(ofile, "data", missing.placeholder)
+        addMissingPlaceholderAttributeForHdf5(ofile, "data", missing.placeholder)
     }
 
     list(
         `$schema` = "hdf5_dense_array/v1.json",
         path = xpath,
         is_child = child,
-        `array` = .grab_array_type(x),
+        `array` = array.info,
         hdf5_dense_array = list(
             dataset = "data",
             dimnames = nm

@@ -60,9 +60,10 @@ writeSparseMatrix <- function(x, file, name, chunk=10000, column=TRUE, tenx=FALS
     invisible(NULL)
 }
 
+#' @import methods
 #' @importFrom rhdf5 h5write h5createGroup H5Gopen H5Gopen H5Fopen H5Fclose 
 #' h5writeAttribute h5createDataset h5writeDataset H5Sunlimited H5Gclose
-#' @importFrom DelayedArray colAutoGrid rowAutoGrid read_sparse_block
+#' @importFrom DelayedArray colAutoGrid rowAutoGrid read_sparse_block type
 #' @importClassesFrom Matrix dgCMatrix
 .write_CS_matrix <- function(file, name, mat, chunk_dim = 10000, by_column=TRUE, use_tenx=FALSE, guess_type=TRUE) {
     handle <- H5Fopen(file)
@@ -137,6 +138,10 @@ writeSparseMatrix <- function(x, file, name, chunk=10000, column=TRUE, tenx=FALS
         chunk = chunk_dim
     )
 
+    if (details$missing) {
+        addMissingPlaceholderAttributeForHdf5(file, paste0(name, "/data"), as(NA, type(mat)))
+    }
+
     h5createDataset(
         handle,
         paste0(name, "/indices"),
@@ -167,6 +172,18 @@ writeSparseMatrix <- function(x, file, name, chunk=10000, column=TRUE, tenx=FALS
 
 setGeneric(".extract_sparse_details", function(x) standardGeneric(".extract_sparse_details"))
 
+.check_for_missing_value <- function(x) {
+    if (anyNA(x)) {
+        if (is.double(x)) {
+            if (sum(is.na(x)) > sum(is.nan(x))) {
+                return(TRUE)
+            }
+        }
+        return(FALSE)
+    }
+    return(TRUE)
+}
+
 #' @importClassesFrom Matrix dsparseMatrix
 #' @importFrom DelayedArray getAutoBlockLength type
 setMethod(".extract_sparse_details", "dsparseMatrix", function(x) {
@@ -186,6 +203,7 @@ setMethod(".extract_sparse_details", "dsparseMatrix", function(x) {
 
     limits <- range(x@x)
     list(
+        missing = .check_for_missing_value(x@x),
         negative = limits[1] < 0, 
         extreme = max(abs(limits)),
         non.integer = any.nonint,
@@ -197,8 +215,11 @@ setMethod(".extract_sparse_details", "dsparseMatrix", function(x) {
 setMethod(".extract_sparse_details", "SVT_SparseMatrix", function(x) {
     limits <- range(unlist(lapply(x@SVT, function(x) range(x[[2]]))))
     non.int <- any(vapply(x@SVT, function(x) any(x[[2]]%%1 != 0), TRUE))
+    has.missing <- any(vapply(x@SVT, function(x) .check_for_missing_value(x[[2]]), TRUE))
     count <- sum(vapply(x@SVT, function(x) length(x[[1]]), 0L))
+
     list(
+        missing = has.missing,
         negative = limits[1] < 0, 
         extreme = max(abs(limits)),
         non.integer = non.int,
@@ -211,6 +232,7 @@ setMethod(".extract_sparse_details", "DelayedSetDimnames", function(x) .extract_
 
 .combine_extracted_details <- function(collected) {
     list(
+        missing = any(vapply(collected, function(y) y$missing, TRUE)),
         negative = any(vapply(collected, function(y) y$negative, TRUE)),
         extreme = max(unlist(lapply(collected, function(y) y$extreme))),
         non.integer = any(vapply(collected, function(y) y$non.integer, TRUE)),
@@ -233,7 +255,15 @@ setMethod(".extract_sparse_details", "DelayedMatrix", function(x) .extract_spars
     any.negative <- any(vals < 0)
     any.nonint <- any(vals != round(vals))
     extreme.val <- max(abs(vals))
-    list(negative=any.negative, non.integer=any.nonint, extreme=extreme.val, count=length(vals))
+    has.missing <- .check_for_missing_value(vals)
+
+    list(
+        missing = has.missing,
+        negative = any.negative, 
+        non.integer = any.nonint, 
+        extreme = extreme.val, 
+        count = length(vals)
+    )
 }
 
 #' @importFrom DelayedArray blockApply
