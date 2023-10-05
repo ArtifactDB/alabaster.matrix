@@ -144,7 +144,7 @@ writeSparseMatrix <- function(x, file, name, chunk=10000, column=TRUE, tenx=FALS
 
     is_integer <- type != "DOUBLE"
     transformer <- identity
-    if (details$missing) {
+    if (has.missing) {
         if (is_integer) {
             transformer <- as.integer
         } else {
@@ -203,34 +203,47 @@ setGeneric(".extract_sparse_details", function(x) standardGeneric(".extract_spar
             if (sum(is.na(x)) > sum(is.nan(x))) {
                 return(TRUE)
             }
+        } else {
+            return(TRUE)
         }
-        return(FALSE)
     }
-    return(TRUE)
+    return(FALSE)
 }
 
 #' @importClassesFrom Matrix dsparseMatrix
 #' @importFrom DelayedArray getAutoBlockLength type
 setMethod(".extract_sparse_details", "dsparseMatrix", function(x) {
-    any.nonint <- FALSE
-    i <- 1L
     chunksize <- getAutoBlockLength(type(x))
 
+    any.nonint <- FALSE
+    i <- 1L
     while (i <= length(x@x)) {
         end <- i + chunksize - 1L
         current <- x@x[i:min(end, length(x@x))]
-        if (any(current%%1!=0)) {
+        if (any(current%%1!=0, na.rm=TRUE)) {
             any.nonint <- TRUE
+            break
+        } 
+        i <- end + 1L
+    }
+
+    has.missing <- FALSE
+    i <- 1L
+    while (i <= length(x@x)) {
+        end <- i + chunksize - 1L
+        current <- x@x[i:min(end, length(x@x))]
+        if (.check_for_missing_value(current)) {
+            has.missing <- TRUE
             break
         }
         i <- end + 1L
     }
 
-    limits <- range(x@x)
+    limits <- range(x@x, na.rm=TRUE)
     list(
-        missing = .check_for_missing_value(x@x),
+        missing = has.missing,
         negative = limits[1] < 0, 
-        extreme = max(abs(limits)),
+        extreme = max(abs(limits), na.rm=TRUE),
         non.integer = any.nonint,
         count = length(x@x)
     )
@@ -238,15 +251,15 @@ setMethod(".extract_sparse_details", "dsparseMatrix", function(x) {
 
 #' @importClassesFrom SparseArray SVT_SparseMatrix
 setMethod(".extract_sparse_details", "SVT_SparseMatrix", function(x) {
-    limits <- range(unlist(lapply(x@SVT, function(x) range(x[[2]]))))
-    non.int <- any(vapply(x@SVT, function(x) any(x[[2]]%%1 != 0), TRUE))
-    has.missing <- any(vapply(x@SVT, function(x) .check_for_missing_value(x[[2]]), TRUE))
-    count <- sum(vapply(x@SVT, function(x) length(x[[1]]), 0L))
+    limits <- range(unlist(lapply(x@SVT, function(x) range(x[[2]], na.rm=TRUE))), na.rm=TRUE)
+    non.int <- any(vapply(x@SVT, function(x) any(x[[2]]%%1 != 0, na.rm=TRUE), TRUE), na.rm=TRUE)
+    has.missing <- any(vapply(x@SVT, function(x) .check_for_missing_value(x[[2]]), TRUE), na.rm=TRUE)
+    count <- sum(vapply(x@SVT, function(x) length(x[[1]]), 0L), na.rm=TRUE)
 
     list(
         missing = has.missing,
         negative = limits[1] < 0, 
-        extreme = max(abs(limits)),
+        extreme = max(abs(limits), na.rm=TRUE),
         non.integer = non.int,
         count = count
     )
@@ -257,11 +270,11 @@ setMethod(".extract_sparse_details", "DelayedSetDimnames", function(x) .extract_
 
 .combine_extracted_details <- function(collected) {
     list(
-        missing = any(vapply(collected, function(y) y$missing, TRUE)),
-        negative = any(vapply(collected, function(y) y$negative, TRUE)),
-        extreme = max(unlist(lapply(collected, function(y) y$extreme))),
-        non.integer = any(vapply(collected, function(y) y$non.integer, TRUE)),
-        count = sum(unlist(lapply(collected, function(y) y$count)))
+        missing = any(vapply(collected, function(y) y$missing, TRUE), na.rm=TRUE),
+        negative = any(vapply(collected, function(y) y$negative, TRUE), na.rm=TRUE),
+        extreme = max(unlist(lapply(collected, function(y) y$extreme)), na.rm=TRUE),
+        non.integer = any(vapply(collected, function(y) y$non.integer, TRUE), na.rm=TRUE),
+        count = sum(unlist(lapply(collected, function(y) y$count)), na.rm=TRUE)
     )
 }
 
@@ -277,9 +290,9 @@ setMethod(".extract_sparse_details", "DelayedMatrix", function(x) .extract_spars
 #' @importFrom DelayedArray nzdata
 .extract_sparse_details_fragment <- function(sparse) {
     vals <- nzdata(sparse)
-    any.negative <- any(vals < 0)
-    any.nonint <- any(vals != round(vals))
-    extreme.val <- max(abs(vals))
+    any.negative <- any(vals < 0, na.rm=TRUE)
+    any.nonint <- any(vals != round(vals), na.rm=TRUE)
+    extreme.val <- max(abs(vals), na.rm=TRUE)
     has.missing <- .check_for_missing_value(vals)
 
     list(
