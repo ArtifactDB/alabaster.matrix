@@ -73,7 +73,7 @@
 
         attrs <- h5readAttributes(path, ds)
         miss.place <- attrs[["missing-value-placeholder"]]
-        if (!is.null(miss.place) && (!is.na(miss.place) || is.nan(miss.place))) {
+        if (!is.null(miss.place)) {
             out <- DelayedMask(out, placeholder=miss.place)
         }
 
@@ -87,7 +87,7 @@
 
         attrs <- h5readAttributes(path, paste0(group, "/data"))
         miss.place <- attrs[["missing-value-placeholder"]]
-        if (!is.null(miss.place) && (!is.na(miss.place) || is.nan(miss.place))) {
+        if (!is.null(miss.place)) {
             out <- DelayedMask(out, placeholder=miss.place)
         }
 
