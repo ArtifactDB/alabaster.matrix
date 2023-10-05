@@ -62,24 +62,21 @@ NULL
     xpath <- paste0(path, "/array.h5")
     ofile <- file.path(dir, xpath)
 
-    array.info <- .grab_array_type(x)
     transformed <- transformVectorForHdf5(x)
-    x <- transformed$transformed
-    missing.placeholder <- transformed$placeholder
 
     h5createFile(ofile)
-    writeHDF5Array(x, filepath=ofile, name="data")
+    writeHDF5Array(transformed$transformed, filepath=ofile, name="data")
     nm <- .name_saver(x, ofile)
 
-    if (!is.null(missing.placeholder)) {
-        addMissingPlaceholderAttributeForHdf5(ofile, "data", missing.placeholder)
+    if (!is.null(transformed$placeholder)) {
+        addMissingPlaceholderAttributeForHdf5(ofile, "data", transformed$placeholder)
     }
 
     list(
         `$schema` = "hdf5_dense_array/v1.json",
         path = xpath,
         is_child = child,
-        `array` = array.info,
+        `array` = .grab_array_type(x),
         hdf5_dense_array = list(
             dataset = "data",
             dimnames = nm

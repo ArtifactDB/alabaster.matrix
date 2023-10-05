@@ -91,26 +91,30 @@ writeSparseMatrix <- function(x, file, name, chunk=10000, column=TRUE, tenx=FALS
     # Scan through and guess the best types.
     details <- .extract_sparse_details(mat)
     any.neg <- details$negative
+    extreme <- details$extreme
     any.nonint <- details$non.integer
     count <- details$count
+    has.missing <- details$missing
 
     if (any.nonint) {
         type <- "DOUBLE"
+    } else if (extreme >= 2^31) {
+        # Don't attempt to use unsigned 32-bit ints; values between 2^31
+        # and 2^32 will fail to be converted to R's signed integers.
+        type <- "DOUBLE"
+    } else if (has.missing) {
+        # Don't bother choosing a smaller type, we need to encode NA_integer_ as -2^31.
+        type <- "INT32" 
     } else if (any.neg) {
         type <- "INT32"
     } else {
-        extreme <- details$extreme
-
-        # We don't try to save it as a byte, because that gets interpreted by
-        # rhdf5 as a raw vector... not helpful.
+        # We don't try to save it as a byte for now, because that gets
+        # interpreted by rhdf5 as a raw vector... not helpful.
         if (extreme < 2^16) {
             type <- "UINT16"
-        } else if (extreme < 2^31) {
-            # Don't attempt to use unsigned 32-bit ints; values between 2^31
-            # and 2^32 will fail to be converted to R's signed integers.
-            type <- "INT32"
         } else {
-            type <- "DOUBLE"
+            # Again, don't attempt to use unsigned 32-bit ints.
+            type <- "INT32"
         }
     }
 
@@ -138,8 +142,15 @@ writeSparseMatrix <- function(x, file, name, chunk=10000, column=TRUE, tenx=FALS
         chunk = chunk_dim
     )
 
+    is_integer <- type != "DOUBLE"
+    transformer <- identity
     if (details$missing) {
-        addMissingPlaceholderAttributeForHdf5(file, paste0(name, "/data"), as(NA, type(mat)))
+        if (is_integer) {
+            transformer <- as.integer
+        } else {
+            transformer <- as.double
+        }
+        addMissingPlaceholderAttributeForHdf5(file, paste0(name, "/data"), transformer(NA))
     }
 
     h5createDataset(
@@ -151,9 +162,23 @@ writeSparseMatrix <- function(x, file, name, chunk=10000, column=TRUE, tenx=FALS
     )
 
     if (by_column) {
-        p <- .dump_column_sparse_matrix(mat, handle, data.path=paste0(name, "/data"), index.path=paste0(name, "/indices"), start=NULL)
+        p <- .dump_column_sparse_matrix(
+            mat, 
+            handle, 
+            data.path=paste0(name, "/data"), 
+            index.path=paste0(name, "/indices"), 
+            start=NULL,
+            transformer=transformer
+        )
     } else {
-        p <- .dump_row_sparse_matrix(mat, handle, data.path=paste0(name, "/data"), index.path=paste0(name, "/indices"), start=NULL)
+        p <- .dump_row_sparse_matrix(
+            mat, 
+            handle, 
+            data.path=paste0(name, "/data"), 
+            index.path=paste0(name, "/indices"), 
+            start=NULL,
+            transformer=transformer
+        )
     }
     indptrs <- c(0, cumsum(as.double(p)))
 
@@ -274,17 +299,19 @@ setMethod(".extract_sparse_details", "ANY", function(x) {
 
 ####################################################
 
-setGeneric(".dump_column_sparse_matrix", function(x, handle, index.path, data.path, start) standardGeneric(".dump_column_sparse_matrix"))
+setGeneric(".dump_column_sparse_matrix", function(x, handle, index.path, data.path, start, transformer) {
+    standardGeneric(".dump_column_sparse_matrix")
+})
 
 #' @importFrom rhdf5 h5writeDataset
 #' @importClassesFrom Matrix dgCMatrix
-setMethod(".dump_column_sparse_matrix", "dgCMatrix", function(x, handle, index.path, data.path, start) {
+setMethod(".dump_column_sparse_matrix", "dgCMatrix", function(x, handle, index.path, data.path, start, transformer) {
     if (is.null(start)) {
-        h5writeDataset(x@x, handle, data.path)
+        h5writeDataset(transformer(x@x), handle, data.path)
         h5writeDataset(x@i, handle, index.path)
     } else {
         index <- list(as.double(start) + seq_along(x@x))
-        h5writeDataset(x@x, handle, data.path, index=index)
+        h5writeDataset(transformer(x@x), handle, data.path, index=index)
         h5writeDataset(x@i, handle, index.path, index=index)
     }
     diff(x@p)
@@ -301,7 +328,7 @@ setMethod(".dump_column_sparse_matrix", "dgCMatrix", function(x, handle, index.p
 #' @importFrom rhdf5 h5writeDataset
 #' @importClassesFrom SparseArray SVT_SparseMatrix
 #' @importFrom DelayedArray getAutoBlockSize type 
-setMethod(".dump_column_sparse_matrix", "SVT_SparseMatrix", function(x, handle, index.path, data.path, start) {
+setMethod(".dump_column_sparse_matrix", "SVT_SparseMatrix", function(x, handle, index.path, data.path, start, transformer) {
     # Processing things in chunks to reduce the number of HDF5 calls.
     chunksize <- min(getAutoBlockLength("integer"), getAutoBlockLength(type(x)))
     column.counts <- vapply(x@SVT, function(y) length(y[[1]]), 0L)
@@ -320,7 +347,7 @@ setMethod(".dump_column_sparse_matrix", "SVT_SparseMatrix", function(x, handle, 
 
             index <- list(start + seq_along(all.i))
             h5writeDataset(all.i, handle, index.path, index = index)
-            h5writeDataset(all.d, handle, data.path, index = index)
+            h5writeDataset(transformer(all.d), handle, data.path, index = index)
 
             last.cleared <- i
             cached <- 0
@@ -332,17 +359,17 @@ setMethod(".dump_column_sparse_matrix", "SVT_SparseMatrix", function(x, handle, 
 })
 
 #' @importClassesFrom DelayedArray DelayedSetDimnames
-setMethod(".dump_column_sparse_matrix", "DelayedSetDimnames", function(x, handle, index.path, data.path, start) {
-    .dump_column_sparse_matrix(x@seed, handle, index.path, data.path, start)
+setMethod(".dump_column_sparse_matrix", "DelayedSetDimnames", function(x, handle, index.path, data.path, start, transformer) {
+    .dump_column_sparse_matrix(x@seed, handle, index.path, data.path, start, transformer)
 })
 
 #' @importClassesFrom DelayedArray DelayedMatrix
-setMethod(".dump_column_sparse_matrix", "DelayedMatrix", function(x, handle, index.path, data.path, start) {
-    .dump_column_sparse_matrix(x@seed, handle, index.path, data.path, start)
+setMethod(".dump_column_sparse_matrix", "DelayedMatrix", function(x, handle, index.path, data.path, start, transformer) {
+    .dump_column_sparse_matrix(x@seed, handle, index.path, data.path, start, transformer)
 })
 
 #' @importClassesFrom DelayedArray DelayedAbind
-setMethod(".dump_column_sparse_matrix", "DelayedAbind", function(x, handle, index.path, data.path, start) {
+setMethod(".dump_column_sparse_matrix", "DelayedAbind", function(x, handle, index.path, data.path, start, transformer) {
     if (x@along != 2L) {
         return(callNextMethod()) # goes to the ANY method.
     }
@@ -350,7 +377,7 @@ setMethod(".dump_column_sparse_matrix", "DelayedAbind", function(x, handle, inde
     start <- .sanitize_start(start)
     collected <- vector("list", length(x@seeds))
     for (s in seq_along(x@seeds)) {
-        current <- .dump_column_sparse_matrix(x@seeds[[s]], handle, index.path, data.path, start=start)
+        current <- .dump_column_sparse_matrix(x@seeds[[s]], handle, index.path, data.path, start=start, transformer=transformer)
         collected[[s]] <- current
         start <- start + sum(as.double(current))
     }
@@ -359,14 +386,23 @@ setMethod(".dump_column_sparse_matrix", "DelayedAbind", function(x, handle, inde
 })
 
 #' @importFrom DelayedArray colAutoGrid read_sparse_block
-setMethod(".dump_column_sparse_matrix", "ANY", function(x, handle, index.path, data.path, start) {
+setMethod(".dump_column_sparse_matrix", "ANY", function(x, handle, index.path, data.path, start, transformer) {
     start <- .sanitize_start(start)
     grid <- colAutoGrid(x)
     out <- vector("list", length(grid))
 
     for (i in seq_along(grid)) {
         block <- read_sparse_block(x, grid[[i]])
-        cout <- .blockwise_sparse_writer(block, start, file=handle, index.path=index.path, data.path=data.path, by_column=TRUE)
+        cout <- .blockwise_sparse_writer(
+            block, 
+            start, 
+            file=handle, 
+            transformer=transformer,
+            index.path=index.path, 
+            data.path=data.path, 
+            by_column=TRUE
+        )
+        
         out[[i]] <- cout$number
         start <- cout$last
     }
@@ -375,14 +411,23 @@ setMethod(".dump_column_sparse_matrix", "ANY", function(x, handle, index.path, d
 })
 
 #' @importFrom DelayedArray rowAutoGrid read_sparse_block
-.dump_row_sparse_matrix <- function(x, handle, index.path, data.path, start) {
+.dump_row_sparse_matrix <- function(x, handle, index.path, data.path, start, transformer) {
     start <- .sanitize_start(start)
     grid <- rowAutoGrid(x)
     out <- vector("list", length(grid))
 
     for (i in seq_along(grid)) {
         block <- read_sparse_block(x, grid[[i]])
-        cout <- .blockwise_sparse_writer(block, start, file=handle, index.path=index.path, data.path=data.path, by_column=FALSE)
+        cout <- .blockwise_sparse_writer(
+            block, 
+            start, 
+            transformer=transformer, 
+            file=handle, 
+            index.path=index.path, 
+            data.path=data.path, 
+            by_column=FALSE
+        )
+
         out[[i]] <- cout$number
         start <- cout$last
     }
@@ -392,7 +437,7 @@ setMethod(".dump_column_sparse_matrix", "ANY", function(x, handle, index.path, d
 
 #' @importFrom DelayedArray nzindex nzdata
 #' @importFrom rhdf5 h5writeDataset
-.blockwise_sparse_writer <- function(block, last, file, index.path, data.path, by_column) {
+.blockwise_sparse_writer <- function(block, last, transformer, file, index.path, data.path, by_column) {
     nzdex <- nzindex(block)
     if (by_column) {
         primary <- nzdex[, 2]
@@ -413,7 +458,7 @@ setMethod(".dump_column_sparse_matrix", "ANY", function(x, handle, index.path, d
     newlast <- last + length(primary)
     index <- list(last + seq_along(primary))
     h5writeDataset(secondary - 1L, file, index.path, index = index)
-    h5writeDataset(v, file, data.path, index = index)
+    h5writeDataset(transformer(v), file, data.path, index = index)
 
     list(number=tabulate(primary, ndim), last=newlast)
 }
