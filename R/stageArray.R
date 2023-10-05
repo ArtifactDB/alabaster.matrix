@@ -79,7 +79,8 @@ NULL
         `array` = .grab_array_type(x),
         hdf5_dense_array = list(
             dataset = "data",
-            dimnames = nm
+            dimnames = nm,
+            version = 2
         )
     )
 }
@@ -162,7 +163,8 @@ setMethod("stageObject", "DelayedArray", function(x, dir, path, child=FALSE) .st
         hdf5_sparse_matrix = list(
             group = "sparse",
             format = "tenx_matrix",
-            dimnames = nm
+            dimnames = nm,
+            version = 2 
         )
     )
 }
@@ -243,7 +245,8 @@ setMethod("stageObject", "DelayedMatrix", function(x, dir, path, child=FALSE) .s
             `array` = .grab_array_type(x),
             hdf5_sparse_matrix = list(
                 group = x@group,
-                format = "tenx_matrix"
+                format = "tenx_matrix",
+                version = 2
             )
         )
 
@@ -258,7 +261,8 @@ setMethod("stageObject", "DelayedMatrix", function(x, dir, path, child=FALSE) .s
             is_child=child,
             `array` = .grab_array_type(x),
             hdf5_dense_array= list(
-                dataset=x@name
+                dataset=x@name,
+                version = 2
             )
         )
     }
