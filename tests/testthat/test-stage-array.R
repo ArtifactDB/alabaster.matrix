@@ -227,4 +227,43 @@ test_that("stageObject recycles existing HDF5Arrays", {
     }
 })
 
+test_that("reading arrays work with non-default NA placeholders", {
+    dir <- tempfile()
+    dir.create(dir, recursive=TRUE)
 
+    # Dense case.
+    {
+        x <- matrix(rpois(1000, 2), 100, 10)
+        storage.mode(x) <- "integer"
+
+        info <- stageObject(x, dir, "dense")
+        alabaster.base::addMissingPlaceholderAttributeForHdf5(
+            file.path(dir, info$path), 
+            info$hdf5_dense_array$dataset, 
+            0L
+        )
+
+        arr2 <- loadArray(info, project=dir)
+        ref <- as.matrix(x)
+        ref[ref==0L] <- NA
+        expect_identical(ref, as.matrix(arr2))
+    }
+
+    # Sparse case.
+    {
+        x <- rsparsematrix(100, 20, 0.5)
+        first <- x@x[1]
+
+        info <- stageObject(x, dir, "sparse")
+        alabaster.base::addMissingPlaceholderAttributeForHdf5(
+            file.path(dir, info$path), 
+            paste0(info$hdf5_sparse_matrix$group, "/data"), 
+            first
+        )
+
+        arr2 <- loadArray(info, project=dir)
+        ref <- as.matrix(x)
+        ref[ref==first] <- NA
+        expect_identical(ref, as.matrix(arr2))
+    }
+})

@@ -140,7 +140,7 @@ test_that("writing to a sparse matrix works with NA values", {
     {
         tmp <- tempfile(fileext=".h5")
         writeSparseMatrix(x, tmp, "csc_matrix")
-        expect_null(rhdf5::h5readAttributes(tmp, "csc_matrix/data")[["missing-value-placeholder"]], NA_real_)
+        expect_null(rhdf5::h5readAttributes(tmp, "csc_matrix/data")[["missing-value-placeholder"]])
     }
 
     # Double-precision mode.
