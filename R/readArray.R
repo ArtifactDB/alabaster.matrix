@@ -1,13 +1,15 @@
-#' Read high-dimensional arrays from disk
+#' Read a dense array from disk
 #'
-#' Read arrays from on-disk formats, using the corresponding \code{\link{stageObject}} method. 
-#' It should not be necessary for users to call this function manually. 
+#' Read a dense high-dimensional array from its on-disk representation.
 #'
-#' @param info Named list containing the metadata for this array.
-#' @param project Any argument accepted by the acquisition functions, see \code{?\link{acquireFile}}. 
-#' By default, this should be a string containing the path to a staging directory.
+#' @param path String containing a path to a directory, itself created by the \code{\link{saveObject}} method for a dense array.
+#' @param array.file.backed Logical scalar indicating whether to return a file-backed S4 array class, or an ordinary R array in memory.
+#' @param ... Further arguments, ignored.
 #' 
-#' @return A multi-dimensional object (usually a \linkS4class{DelayedMatrix}) containing the array data.
+#' @return A multi-dimensional array-like object, either a \linkS4class{DelayedArray} or an ordinary R array.
+#'
+#' @seealso
+#' \code{"\link{saveObject,array-method}"}, to create the directory and its contents.
 #'
 #' @author Aaron Lun
 #'
@@ -24,7 +26,8 @@
 #' readArray(dir)
 #' 
 #' @export
-#' @import HDF5Array
+#' @importFrom HDF5Array HDF5Array
+#' @importFrom DelayedArray type<-
 readArray <- function(path, array.file.backed=TRUE, ...) {
     fpath <- file.path(path, "array.h5")
 
@@ -47,7 +50,10 @@ readArray <- function(path, array.file.backed=TRUE, ...) {
         list(type=type, names=names, transposed=(transposed != 0L), placeholder=placeholder)
     })
 
-    out <- HDF5Array(filepath=fpath, name="dense_array/data", type=from_array_type(details$type))
+    out <- HDF5Array(filepath=fpath, name="dense_array/data")
+    if (type(out) == "raw") { # ... so that placeholders are correctly substituted.
+        type(out) <- "integer"
+    }
 
     if (!is.null(details$names)) {
         dimnames(out) <- rev(details$names)
@@ -57,7 +63,9 @@ readArray <- function(path, array.file.backed=TRUE, ...) {
     }
     if (!is.null(details$placeholder)) {
         out <- DelayedMask(out, placeholder=details$placeholder)
+        out <- DelayedArray(out)
     }
+    type(out) <- from_array_type(details$type)
 
     if (!array.file.backed) {
         return(as.array(out))

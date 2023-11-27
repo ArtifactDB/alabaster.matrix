@@ -39,6 +39,9 @@ saveObject(mat, dir)
 list.files(dir)
 
 }
+\seealso{
+\code{\link{readArray}}, to read the directory contents back into the R session.
+}
 \author{
 Aaron Lun
 }

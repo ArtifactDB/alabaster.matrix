@@ -10,6 +10,9 @@
 #' @return
 #' \code{x} is saved to \code{path} and \code{NULL} is invisibly returned.
 #'
+#' @seealso
+#' \code{\link{readArray}}, to read the directory contents back into the R session.
+#'
 #' @author Aaron Lun
 #' @examples
 #' mat <- array(rpois(10000, 10), c(50, 20, 10))
@@ -24,8 +27,9 @@
 #' list.files(dir)
 #'
 #' @name saveArray
-#' @aliases stageObject,array-method
-#' @aliases stageObject,Matrix-method
+#' @aliases 
+#' stageObject,array-method
+#' stageObject,Matrix-method
 NULL
 
 #' @import alabaster.base rhdf5
@@ -60,7 +64,7 @@ NULL
     if (!is.null(transformed$placeholder)) {
         dhandle <- H5Dopen(ghandle, "data")
         on.exit(H5Dclose(dhandle), add=TRUE, after=FALSE)
-        h5_write_attribute(dhandle, missingPlaceholderName, transformed$placeholder)
+        h5_write_attribute(dhandle, missingPlaceholderName, transformed$placeholder, scalar=TRUE)
     }
 
     save_names(ghandle, x, transpose=TRUE)
@@ -138,7 +142,6 @@ setMethod("saveObject", "denseMatrix", .save_array)
 }
 
 #' @export
-#' @rdname stageArray
 setMethod("stageObject", "array", function(x, dir, path, child=FALSE) .stage_array(x, dir, path, child=child))
 
 #' @importFrom alabaster.base .stageObject

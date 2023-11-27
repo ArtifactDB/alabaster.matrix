@@ -2,22 +2,22 @@
 % Please edit documentation in R/readArray.R
 \name{readArray}
 \alias{readArray}
-\title{Read high-dimensional arrays from disk}
+\title{Read a dense array from disk}
 \usage{
 readArray(path, array.file.backed = TRUE, ...)
 }
 \arguments{
-\item{info}{Named list containing the metadata for this array.}
+\item{path}{String containing a path to a directory, itself created by the \code{\link{saveObject}} method for a dense array.}
 
-\item{project}{Any argument accepted by the acquisition functions, see \code{?\link{acquireFile}}. 
-By default, this should be a string containing the path to a staging directory.}
+\item{array.file.backed}{Logical scalar indicating whether to return a file-backed S4 array class, or an ordinary R array in memory.}
+
+\item{...}{Further arguments, ignored.}
 }
 \value{
-A multi-dimensional object (usually a \linkS4class{DelayedMatrix}) containing the array data.
+A multi-dimensional array-like object, either a \linkS4class{DelayedArray} or an ordinary R array.
 }
 \description{
-Read arrays from on-disk formats, using the corresponding \code{\link{stageObject}} method. 
-It should not be necessary for users to call this function manually.
+Read a dense high-dimensional array from its on-disk representation.
 }
 \examples{
 arr <- array(rpois(10000, 10), c(50, 20, 10))
@@ -31,6 +31,9 @@ dir <- tempfile()
 saveObject(arr, dir)
 readArray(dir)
 
+}
+\seealso{
+\code{"\link{saveObject,array-method}"}, to create the directory and its contents.
 }
 \author{
 Aaron Lun

@@ -1,5 +1,5 @@
 #' @importFrom DelayedArray type
-array_type <- function(x) {
+to_array_type <- function(x) {
     switch(type(x),
         integer="integer",
         double="number",
@@ -8,6 +8,8 @@ array_type <- function(x) {
         "other"
     )
 }
+
+array_type <- to_array_type
 
 from_array_type <- function(x) {
     switch(x, 
