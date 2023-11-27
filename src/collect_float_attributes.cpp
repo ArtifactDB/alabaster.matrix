@@ -62,8 +62,8 @@ Rcpp::List collect_double_attributes(Rcpp::NumericVector x) {
         if (!non_integer) {
             for (auto y : x) {
                 if (!ISNA(y)) {
-                    minv = std::min(y, v);
-                    maxv = std::max(y, v);
+                    minv = std::min(y, minv);
+                    maxv = std::max(y, maxv);
                 }
             }
         }
@@ -71,7 +71,7 @@ Rcpp::List collect_double_attributes(Rcpp::NumericVector x) {
 
     bool has_lowest = false, has_highest = false;
     {
-        constexpr double lowest = lowest_double();
+        double lowest = lowest_double();
         for (auto y : x) {
             if (!ISNA(y) && y == lowest) {
                 has_lowest = true;
@@ -79,7 +79,7 @@ Rcpp::List collect_double_attributes(Rcpp::NumericVector x) {
             }
         }
 
-        constexpr double highest = max_double();
+        double highest = max_double();
         for (auto y : x) {
             if (!ISNA(y) && y == highest) {
                 has_highest = true;
@@ -88,7 +88,7 @@ Rcpp::List collect_double_attributes(Rcpp::NumericVector x) {
         }
     }
 
-    return Rcpp::List(
+    return Rcpp::List::create(
         Rcpp::Named("range") = Rcpp::NumericVector::create(minv, maxv),
         Rcpp::Named("missing") = Rcpp::LogicalVector::create(has_missing),
         Rcpp::Named("non_integer") = Rcpp::LogicalVector::create(non_integer),

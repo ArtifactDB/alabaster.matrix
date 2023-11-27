@@ -19,6 +19,7 @@ setMethod("collect_integer_attributes", "array", function(x) {
 })
 
 setMethod("collect_integer_attributes", "ANY", function(x) {
+
     collated <- blockApply(x, collect_integer_attributes)
     list(
         range=aggregate_range(collated, "range"),
@@ -133,9 +134,13 @@ optimize_float_storage <- function(x) {
         } else if (!attr$has_max) {
             placeholder <- max_double()
         }
+
+        # Fallback that just goes through and pulls out all unique values.
         if (is.null(placeholder)) {
-            warning("cannot guess a suitable missing value placeholder, treating all NAs as NaNs")
+            u <- Reduce(union, blockApply(x, function(y) unique(as.vector(y))))
+            placeholder <- chooseMissingPlaceholderForHdf5(u)
         }
+
         return(list(type="H5T_NATIVE_DOUBLE", placeholder=placeholder))
 
     } else {
