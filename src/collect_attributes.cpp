@@ -8,7 +8,7 @@ double lowest_double() {
 }
 
 //[[Rcpp::export(rng=false)]]
-double max_double() {
+double highest_double() {
     return std::numeric_limits<double>::max();
 }
 
@@ -27,7 +27,7 @@ Rcpp::List collect_double_attributes(Rcpp::NumericVector x) {
     bool has_neginf = false;
     {
         for (auto y : x) {
-            if (!ISNA(y) && !std::isnan(y)) {
+            if (!ISNA(y) && std::isnan(y)) {
                 has_nan = true;
                 break;
             }
@@ -48,7 +48,7 @@ Rcpp::List collect_double_attributes(Rcpp::NumericVector x) {
 
     bool non_integer = true;
     double minv = R_PosInf, maxv = R_NegInf;
-    if (has_nan || has_posinf || has_neginf) {
+    if (!has_nan && !has_posinf && !has_neginf) {
         non_integer = false;
         for (auto y : x) {
             if (!ISNA(y)) {
@@ -79,7 +79,7 @@ Rcpp::List collect_double_attributes(Rcpp::NumericVector x) {
             }
         }
 
-        double highest = max_double();
+        double highest = highest_double();
         for (auto y : x) {
             if (!ISNA(y) && y == highest) {
                 has_highest = true;
