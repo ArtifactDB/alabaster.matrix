@@ -82,3 +82,156 @@ test_that("ConstantArrays behave correctly with NAs", {
     expect_identical(ConstantArray(c(12, 7), value=NA_real_), out)
 })
 
+#######################################################
+#######################################################
+
+test_that("DelayedAbind works along rows", {
+    X <- DelayedArray(matrix(runif(60), ncol=20))
+    Y <- DelayedArray(matrix(runif(100), ncol=20))
+    Z <- rbind(X, Y)
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(Z, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedAbind")
+})
+
+test_that("DelayedAbind works along columns", {
+    A <- DelayedArray(matrix(runif(60), nrow=20))
+    B <- DelayedArray(matrix(runif(100), nrow=20))
+    C <- DelayedArray(matrix(runif(200), nrow=20)) # throwing in another dataset for some variety.
+    Z <- BiocGenerics::cbind(A, B, C)
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(Z, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedAbind")
+})
+
+test_that("DelayedAbind works for 3D arrays", {
+    A <- DelayedArray(array(runif(100), c(10, 5, 4)))
+    B <- DelayedArray(array(runif(100), c(10, 5, 4)))
+    Z <- arbind(A, B)
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(Z, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedAbind")
+})
+
+#######################################################
+#######################################################
+
+test_that("DelayedAperm works along rows", {
+    X <- DelayedArray(matrix(runif(100), ncol=20))
+    Z <- t(X)
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(Z, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedAperm")
+})
+
+test_that("DelayedAperm works for 3D arrays", {
+    A <- DelayedArray(array(runif(100), c(10, 5, 4)))
+    perm <- c(3L, 1L, 2L)
+    Z <- aperm(A, perm)
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(Z, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedAperm")
+})
+
+#######################################################
+#######################################################
+
+test_that("DelayedNaryIsoOp works as expected (arithmetic)", {
+    X <- DelayedArray(matrix(runif(100), ncol=5))
+    Y <- DelayedArray(matrix(runif(100), ncol=5))
+    Z <- X * Y
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(Z, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedNaryIsoOp")
+})
+
+test_that("DelayedNaryIsoOp works as expected (comparison)", {
+    X <- DelayedArray(matrix(rpois(100, 5), ncol=5))
+    Y <- DelayedArray(matrix(rpois(100, 2), ncol=5))
+    Z <- X > Y
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(Z, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedNaryIsoOp")
+})
+
+test_that("DelayedNaryIsoOp works as expected (logic)", {
+    X <- DelayedArray(matrix(rbinom(100, 1, 0.5) != 0, ncol=5))
+    Y <- DelayedArray(matrix(rbinom(100, 1, 0.5) != 0, ncol=5))
+    Z <- X | Y
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(Z, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedNaryIsoOp")
+})
+
+test_that("DelayedNaryIsoOp works for 3D arrays", {
+    A <- DelayedArray(array(runif(100), c(10, 5, 4)))
+    B <- DelayedArray(array(runif(100), c(10, 5, 4)))
+    Z <- A <= B
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(Z, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedNaryIsoOp")
+})
+
+test_that("DelayedNaryIsoOp works with multiple seeds", {
+    X <- DelayedArray(matrix(rpois(100, 5), ncol=5))
+    Y <- DelayedArray(matrix(rpois(100, 2), ncol=5))
+    Z <- DelayedArray(matrix(rbinom(100, 1, 0.5) == 0, ncol=5))
+    AA <- X - Y + Z
+    temp <- saveDelayed(AA)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(AA, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedNaryIsoOp")
+})
+
+#######################################################
+#######################################################
+
+test_that("DelayedSetDimnames works as expected (colnames only)", {
+    Z <- DelayedArray(matrix(runif(100), ncol=20))
+    colnames(Z) <- LETTERS[1:20]
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(Z, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedSetDimnames")
+})
+
+test_that("DelayedSetDimnames works as expected (rownames only)", {
+    Z <- DelayedArray(matrix(runif(100) < 0.1, ncol=20))
+    rownames(Z) <- letters[1:5]
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(Z, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedSetDimnames")
+})
+
+test_that("DelayedSetDimnames works as expected (both sets of names)", {
+    Z <- DelayedArray(matrix(rpois(100, 5), ncol=20))
+    dimnames(Z) <- list(letters[1:5], LETTERS[1:20])
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(Z, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedSetDimnames")
+})
+

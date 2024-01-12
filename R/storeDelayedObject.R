@@ -228,17 +228,14 @@ setMethod("storeDelayedObject", "DelayedAperm", function(x, handle, name, versio
     h5_write_attribute(ghandle, "delayed_type", "operation", scalar=TRUE)
     h5_write_attribute(ghandle, "delayed_operation", "transpose", scalar=TRUE)
 
-    h5_write_vector(ghandle, "dimensions", x@perm - 1L, type="H5T_NATIVE_UINT32")
+    h5_write_vector(ghandle, "permutation", x@perm - 1L, type="H5T_NATIVE_UINT32")
     storeDelayedObject(x@seed, ghandle, "seed", version=version, ...)
     invisible(NULL)
 })
 
 #' @import DelayedArray rhdf5
 chihaya_operation_registry[["transpose"]] <- function(handle, version, ...) {
-    shandle <- H5Gopen(handle, "seed")
-    on.exit(H5Gclose(shandle), add=TRUE, after=FALSE)
-
-    x <- reloadDelayedObject(shandle, version=version, ...)
+    x <- reloadDelayedObject(handle, "seed", version=version, ...)
     perm <- h5_read_vector(handle, "permutation")
     aperm(x, perm + 1L)
 }
@@ -314,14 +311,8 @@ setMethod("storeDelayedObject", "DelayedNaryIsoOp", function(x, handle, name, ve
 
 #' @import DelayedArray
 chihaya_load_binary_op <- function(handle, version, logic, ...) {
-    lhandle <- H5Gopen(handle, "left")
-    on.exit(H5Gclose(lhandle), add=TRUE, after=FALSE)
-    left <- reloadDelayedObject(lhandle, version=version, ...)
-
-    rhandle <- H5Gopen(handle, "right")
-    on.exit(H5Gclose(rhandle), add=TRUE, after=FALSE)
-    right <- reloadDelayedObject(rhandle, version=version, ...)
-
+    left <- reloadDelayedObject(handle, "left", version=version, ...)
+    right <- reloadDelayedObject(handle, "right", version=version, ...)
     op <- h5_read_vector(handle, "method")
     if (logic) {
         op <- translate_logic_Ops_from_chihaya(op)
@@ -350,7 +341,7 @@ setMethod("storeDelayedObject", "DelayedSetDimnames", function(x, handle, name, 
     h5_write_attribute(dhandle, "length", length(x@dimnames), type="H5T_NATIVE_UINT32")
 
     for (i in seq_along(x@dimnames)) {
-        dn <- dimnames[[i]]
+        dn <- x@dimnames[[i]]
         if (is.character(dn)) { # avoid -1's.
             h5_write_vector(dhandle, as.character(i - 1L), dn)
         }
@@ -362,12 +353,11 @@ setMethod("storeDelayedObject", "DelayedSetDimnames", function(x, handle, name, 
 
 #' @import rhdf5 DelayedArray
 chihaya_operation_registry[["dimnames"]] <- function(handle, version, ...) {
-    shandle <- H5Gopen(handle, "seed")
-    on.exit(H5Gclose(shandle), add=TRUE, after=FALSE)
-    x <- reloadDelayedObject(shandle, version=version, ...)
+    x <- reloadDelayedObject(handle, "seed", version=version, ...)
 
     dhandle <- H5Gopen(handle, "dimnames")
     on.exit(H5Gclose(dhandle), add=TRUE, after=FALSE)
+
     dlen <- h5_read_attribute(dhandle, "length")
     dnames <- vector("list", dlen)
     for (i in seq_along(dnames)) {
