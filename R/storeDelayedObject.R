@@ -378,12 +378,12 @@ chihaya_operation_registry[["dimnames"]] <- function(handle, version, ...) {
 save_chihaya_indices <- function(handle, name, indices) { 
     ihandle <- H5Gcreate(handle, name)
     on.exit(H5Gclose(ihandle), add=TRUE, after=FALSE)
-    h5_write_attribute(dhandle, "length", length(indices), type="H5T_NATIVE_UINT32")
+    h5_write_attribute(ihandle, "length", length(indices), type="H5T_NATIVE_UINT32")
 
     for (i in seq_along(indices)) {
         ii <- indices[[i]]
         if (!is.null(ii)) {
-            h5_write_vector(dhandle, as.character(i - 1L), ii - 1L, type="H5T_NATIVE_UINT32")
+            h5_write_vector(ihandle, as.character(i - 1L), ii - 1L, type="H5T_NATIVE_UINT32")
         }
     }
 }
@@ -397,8 +397,10 @@ load_chihaya_indices <- function(handle, name) {
     indices <- vector("list", ilen)
     for (i in seq_len(ilen)) {
         n <- as.character(i - 1L)
-        if (!h5_object_exists(ihandle, n)) {
-            indices[[i]] <- h5_read_vector(dhandle, n)
+        if (h5_object_exists(ihandle, n)) {
+            indices[[i]] <- h5_read_vector(ihandle, n) + 1L
+        } else {
+            indices[[i]] <- substitute()
         }
     }
 
@@ -422,15 +424,9 @@ setMethod("storeDelayedObject", "DelayedSubassign", function(x, handle, name, ve
 
 #' @import rhdf5 DelayedArray
 chihaya_operation_registry[["subset assignment"]] <- function(handle, version, ...) {
-    shandle <- H5Gopen(handle, "seed")
-    on.exit(H5Gclose(shandle), add=TRUE, after=FALSE)
-    x <- reloadDelayedObject(shandle, version=version, ...)
-
-    vhandle <- H5Gopen(handle, "value")
-    on.exit(H5Gclose(vhandle), add=TRUE, after=FALSE)
-    value <- reloadDelayedObject(vhandle, version=version, ...)
-
-    indices <- load_chihaya_indices(ghandle, "index")
+    x <- reloadDelayedObject(handle, "seed", version=version, ...)
+    value <- reloadDelayedObject(handle, "value", version=version, ...)
+    indices <- load_chihaya_indices(handle, "index")
     do.call(`[<-`, c(list(x=x), indices, list(value=value)))
 } 
 
@@ -446,18 +442,15 @@ setMethod("storeDelayedObject", "DelayedSubset", function(x, handle, name, versi
     h5_write_attribute(ghandle, "delayed_type", "operation", scalar=TRUE)
     h5_write_attribute(ghandle, "delayed_operation", "subset", scalar=TRUE)
 
-    save_chihaya_indices(ghandle, "index", x@Lindex) 
+    save_chihaya_indices(ghandle, "index", x@index) 
     storeDelayedObject(x@seed, ghandle, "seed", version=version, ...)
     invisible(NULL)
 })
 
 #' @import rhdf5 DelayedArray
 chihaya_operation_registry[["subset"]] <- function(handle, version, ...) {
-    shandle <- H5Gopen(handle, "seed")
-    on.exit(H5Gclose(shandle), add=TRUE, after=FALSE)
-    x <- reloadDelayedObject(shandle, version=version, ...)
-
-    indices <- load_chihaya_indices(ghandle, "index")
+    x <- reloadDelayedObject(handle, "seed", version=version, ...)
+    indices <- load_chihaya_indices(handle, "index")
     do.call(`[`, c(list(x), indices, list(drop=FALSE)))
 } 
 

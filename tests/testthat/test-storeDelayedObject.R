@@ -235,3 +235,64 @@ test_that("DelayedSetDimnames works as expected (both sets of names)", {
     expect_s4_class(roundtrip@seed, "DelayedSetDimnames")
 })
 
+#######################################################
+#######################################################
+
+test_that("DelayedSubassign works when all indices are supplied", {
+    X <- DelayedArray(matrix(runif(100), ncol=20))
+    X[1:2,c(1, 10, 20)] <- matrix(-runif(6), ncol=3)
+    temp <- saveDelayed(X)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(X, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedSubassign")
+})
+
+test_that("DelayedSubassign works when only one index is supplied", {
+    X <- DelayedArray(matrix(runif(100), ncol=20))
+    X[c(1, 5), ] <- matrix(-rpois(2*ncol(X), 12), ncol=ncol(X))
+    temp <- saveDelayed(X)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(X, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedSubassign")
+})
+
+test_that("DelayedSubassign works when the replacement is a DelayedArray", {
+#    X <- DelayedArray(matrix(rbinom(100, 1, 0.5) == 0, ncol=20))
+#    X[1:2,3:5] <- DelayedArray(matrix(-runif(6), ncol=3)) + 1
+#    temp <- saveDelayed(X)
+#
+#    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+#    expect_identical(X, roundtrip)
+#    expect_s4_class(roundtrip@seed, "DelayedSubassign")
+})
+
+#######################################################
+#######################################################
+
+test_that("DelayedSubset works when all indices are supplied", {
+    X <- DelayedArray(matrix(runif(100), ncol=20))
+    Y <- X[1:2,3:5]
+    temp <- saveDelayed(Y)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(Y, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedSubset")
+
+    # Trying with out-of-order indices.
+    Y <- X[c(1,3,5),c(2,8,6,4)]
+    temp <- saveDelayed(Y)
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(Y, roundtrip)
+})
+
+test_that("DelayedSubset works when only one index is supplied", {
+    X <- DelayedArray(matrix(runif(100), ncol=20))
+    Y <- X[,c(20, 1, 3, 15, 9)] 
+    temp <- saveDelayed(Y)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(Y, roundtrip)
+    expect_s4_class(roundtrip@seed, "DelayedSubset")
+})
