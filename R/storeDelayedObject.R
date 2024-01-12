@@ -95,7 +95,7 @@ chihaya_operation_registry <- list()
 reloadDelayedObject <- function(handle, name, version=package_version("1.1"), ...) {
     ghandle <- H5Gopen(handle, name)
     on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
-    objtype <- h5_read_attribute(handle, "delayed_type")
+    objtype <- h5_read_attribute(ghandle, "delayed_type")
 
     if (objtype == "array") {
         arrtype <- h5_read_attribute(ghandle, "delayed_array")
@@ -164,15 +164,11 @@ chihaya_operation_registry[["combine"]] <- function(handle, version, ...) {
     on.exit(H5Gclose(shandle), add=TRUE, after=FALSE)
 
     len <- h5_read_attribute(shandle, "length")
-    along <- h5_read_vector(ghandle, "along")
+    along <- h5_read_vector(handle, "along")
 
     seeds <- vector("list", len)
     for (i in seq_len(len)) {
-        seeds[[i]] <- local({
-            ihandle <- H5Gopen(shandle, as.character(i - 1L))
-            on.exit(H5Gclose(ihandle))
-            reloadDelayedObject(ihandle, version=version, ...)
-        })
+        seeds[[i]] <- reloadDelayedObject(shandle, as.character(i - 1L), version=version, ...)
     }
 
     if (along == 0L) {
@@ -205,9 +201,19 @@ setMethod("storeDelayedObject", "ANY", function(x, handle, name, version=package
 })
 
 #' @import alabaster.base rhdf5 DelayedArray
-chihaya_array_registry[["custom takane seed array"]] <- function(handle, version, ...) {
+chihaya_array_registry[["custom takane seed array"]] <- function(handle, version, custom.takane.realize=FALSE, ...) {
     index <- h5_read_vector(handle, "index")
-    readObject(file.path(dirname(H5Fget_name(handle)), "seeds", index), ...)
+    out <- readObject(file.path(dirname(H5Fget_name(handle)), "seeds", index), ...)
+
+    if (custom.takane.realize) {
+        if (is_sparse(out)) {
+            out <- as(out, "SVT_SparseArray")
+        } else {
+            out <- as.array(out)
+        }
+    }
+
+    out
 }
 
 #######################################################
