@@ -626,6 +626,7 @@ setMethod("storeDelayedObject", "DelayedUnaryIsoOpStack", function(x, handle, na
 setMethod("storeDelayedObject", "DelayedUnaryIsoOpWithArgs", function(x, handle, name, version=package_version("1.1"), ...) {
     ghandle <- H5Gcreate(handle, name)
     on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
+    h5_write_attribute(ghandle, "delayed_type", 'operation')
 
     # Figuring out the identity of the operation.
     chosen <- NULL
@@ -640,14 +641,14 @@ setMethod("storeDelayedObject", "DelayedUnaryIsoOpWithArgs", function(x, handle,
     }
 
     if (chosen %in% chihaya.supported.Logic) {
-        h5_write_attribute(handle, "delayed_operation", 'unary logic')
+        h5_write_attribute(ghandle, "delayed_operation", 'unary logic')
         chosen <- translate_logic_Ops_for_chihaya(chosen)
     } else if (chosen %in% chihaya.supported.Compare) {
-        h5_write_attribute(handle, "delayed_operation", 'unary comparison')
+        h5_write_attribute(ghandle, "delayed_operation", 'unary comparison')
     } else if (chosen %in% chihaya.supported.Arith) {
-        h5_write_attribute(handle, "delayed_operation", 'unary arithmetic')
+        h5_write_attribute(ghandle, "delayed_operation", 'unary arithmetic')
     }
-    h5_write_vector(handle, "method", chosen)
+    h5_write_vector(ghandle, "method", chosen)
 
     # Saving the left and right args. There should only be one or the other.
     # as the presence of both is not commutative.
@@ -664,13 +665,13 @@ setMethod("storeDelayedObject", "DelayedUnaryIsoOpWithArgs", function(x, handle,
         along <- x@Ralong[1]
     }
 
-    h5_write_vector(file, name, "side", if (left) "left" else "right", scalar=TRUE)
-    h5_write_vector(file, name, "along", along - 1L, type="H5T_NATIVE_UINT32", scalar=TRUE)
+    h5_write_vector(ghandle, "side", if (left) "left" else "right", scalar=TRUE)
+    h5_write_vector(ghandle, "along", along - 1L, type="H5T_NATIVE_UINT32", scalar=TRUE)
 
     if (length(args) == 1L) {
-        save_vector_for_chihaya(handle, "value", args, version=version, scalar=TRUE)
+        save_vector_for_chihaya(ghandle, "value", args, version=version, scalar=TRUE)
     } else if (is.null(dim(args)) || length(dim(args)) == 1L) {
-        save_vector_for_chihaya(handle, "value", args, version=version)
+        save_vector_for_chihaya(ghandle, "value", args, version=version)
     } else {
         stop("multi-dimensional 'value' not supported in 'DelayedUnaryIsoOpWithArgs'")
     }
@@ -713,7 +714,7 @@ apply_unary_op_with_value <- function(x, op, side, handle, version) {
     if (length(value) == 1L) {
         simple <- TRUE
     } else {
-        along <- h5_read_vector(file, "along")
+        along <- h5_read_vector(handle, "along")
         simple <- along == 0
     }
 

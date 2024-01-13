@@ -75,7 +75,7 @@ test_that("ConstantArrays behave correctly with NAs", {
         on.exit(H5Gclose(ghandle), add=TRUE)
         dhandle <- H5Dopen(ghandle, "value")
         on.exit(H5Dclose(dhandle), add=TRUE)
-        h5writeAttribute(1.2, dhandle, "missing_placeholder")
+        h5_write_attribute(dhandle, "missing_placeholder", 1.2, type="H5T_NATIVE_DOUBLE", scalar=TRUE)
     })()
 
     out <- loadDelayed(temp)
@@ -441,3 +441,115 @@ test_that("DelayedUnaryIsoOpStack works for Math2", {
     expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpStack")
 })
 
+#######################################################
+#######################################################
+
+test_that("DelayedUnaryIsoOpWithArgs works as expected", {
+    X <- DelayedArray(matrix(runif(100), ncol=20))
+    Z <- X - runif(5)
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpWithArgs")
+})
+
+test_that("DelayedUnaryIsoOpWithArgs works along the other dimension", {
+    X <- DelayedArray(matrix(runif(100), ncol=20))
+    Z <- X - runif(5)
+    temp <- saveDelayed(Z)
+
+    # Manually injecting along=1, because we can't actually seem to stage a
+    # DelayedArray directly with along=1; calling DelayedArray::sweep does
+    # a double-transpose instead.
+    library(rhdf5)
+    vec <- runif(20)
+    (function() {
+        fhandle <- H5Fopen(temp)
+        on.exit(H5Fclose(fhandle), add=TRUE, after=FALSE)
+        ghandle <- H5Gopen(fhandle, "FOO")
+        on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
+        H5Ldelete(ghandle, "along")
+        h5_write_vector(ghandle, "along", 1, type="H5T_NATIVE_UINT8", scalar=TRUE)
+        H5Ldelete(ghandle, "value")
+        dhandle <- h5_write_vector(ghandle, "value", vec, type="H5T_NATIVE_DOUBLE", emit=TRUE)
+        on.exit(H5Dclose(dhandle), add=TRUE, after=FALSE)
+        h5_write_attribute(dhandle, "type", "FLOAT", scalar=TRUE)
+    })()
+
+    roundtrip <- loadDelayed(temp)
+    expected <- sweep(as.matrix(X), MARGIN=2, STATS=vec, FUN="-")
+    expect_identical(as.matrix(expected), as.matrix(roundtrip))
+})
+
+test_that("DelayedUnaryIsoOpWithArgs handles logical renaming", {
+    X <- DelayedArray(matrix(runif(100) > 0.5, ncol=20))
+    Z <- X & runif(5) > 0.5
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpWithArgs")
+})
+
+test_that("DelayedUnaryIsoOpWithArgs handles NAs correctly", {
+    X <- DelayedArray(matrix(runif(100), ncol=20))
+    vec <- runif(5)
+    vec[1] <- NA
+    Z <- X - vec
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpWithArgs")
+
+    # Works with non-default NAs
+    vec <- 1:5
+    Z <- X / vec
+    temp <- saveDelayed(Z)
+
+    library(rhdf5)
+    (function() {
+        fhandle <- H5Fopen(temp)
+        on.exit(H5Fclose(fhandle), add=TRUE)
+        dhandle <- H5Dopen(fhandle, "FOO/value")
+        on.exit(H5Dclose(dhandle), add=TRUE)
+        h5_write_attribute(dhandle, "missing_placeholder", 3, type="H5T_NATIVE_DOUBLE", scalar=TRUE)
+    })()
+
+    roundtrip <- loadDelayed(temp)
+    vec[3] <- NA
+    expected <- X / vec
+    expect_identical(as.matrix(expected), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpWithArgs")
+})
+
+test_that("DelayedUnaryIsoOpWithArgs handles side-ness correctly", {
+    X <- DelayedArray(matrix(runif(100), ncol=20))
+    Z <- runif(5) / X
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpWithArgs")
+})
+
+test_that("DelayedUnaryIsoOpWithArgs handles repeated operations correctly (same side)", {
+    X <- DelayedArray(matrix(runif(100), ncol=20))
+    Z <- (X + runif(5)) + runif(5)
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpWithArgs")
+})
+
+test_that("DelayedUnaryIsoOpWithArgs handles repeated operations correctly (opposite sides)", {
+    X <- DelayedArray(matrix(runif(100), ncol=20))
+    Z <- runif(5) + (X + runif(5))
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpWithArgs")
+})
