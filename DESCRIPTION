@@ -26,7 +26,9 @@ Suggests:
     testthat,
     knitr,
     BiocStyle,
-    chihaya
+    chihaya,
+    BiocSingular,
+    ResidualMatrix
 LinkingTo: Rcpp
 VignetteBuilder: knitr
 RoxygenNote: 7.2.3

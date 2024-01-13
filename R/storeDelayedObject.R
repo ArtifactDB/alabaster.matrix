@@ -90,30 +90,45 @@ save_vector_for_chihaya <- function(handle, name, x, version, scalar) {
 
 chihaya_array_registry <- list()
 chihaya_operation_registry <- list()
+chihaya_type_hint_registry <- list()
 
 #' @export
 reloadDelayedObject <- function(handle, name, version=package_version("1.1"), ...) {
     ghandle <- H5Gopen(handle, name)
     on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
-    objtype <- h5_read_attribute(ghandle, "delayed_type")
 
-    if (objtype == "array") {
-        arrtype <- h5_read_attribute(ghandle, "delayed_array")
-        FUN <- chihaya_array_registry[[arrtype]]
-    } else {
-        optype <- h5_read_attribute(ghandle, "delayed_operation")
-        FUN <- chihaya_operation_registry[[optype]]
+    output <- NULL
+    if (h5_object_exists(ghandle, "_r_type_hint")) {
+        hint <- h5_read_vector(ghandle, "_r_type_hint")
+        if (hint %in% names(chihaya_type_hint_registry)) {
+            FUN <- chihaya_type_hint_registry[[hint]]
+            output <- tryCatch(
+                FUN(ghandle, version=version, ...),
+                error=function(e) NULL
+            )
+        }
     }
 
-    if (is.null(FUN)) {
-        stop(objtype, " type '", optype, "' is not yet supported")
+    if (is.null(output)) {
+        objtype <- h5_read_attribute(ghandle, "delayed_type")
+        if (objtype == "array") {
+            arrtype <- h5_read_attribute(ghandle, "delayed_array")
+            FUN <- chihaya_array_registry[[arrtype]]
+        } else {
+            optype <- h5_read_attribute(ghandle, "delayed_operation")
+            FUN <- chihaya_operation_registry[[optype]]
+        }
+
+        if (is.null(FUN)) {
+            stop(objtype, " type '", optype, "' is not yet supported")
+        }
+        output <- FUN(ghandle, version=version, ...)
     }
 
-    out <- FUN(ghandle, version=version, ...)
-    if (!is(out, "DelayedArray")) {
-        out <- DelayedArray(out)
+    if (!is(output, "DelayedArray")) {
+        output <- DelayedArray(output)
     }
-    out
+    output
 }
 
 #######################################################
@@ -180,44 +195,6 @@ chihaya_operation_registry[["combine"]] <- function(handle, version, ...) {
     } else {
         do.call(acbind, seeds)
     }
-}
-
-#######################################################
-#######################################################
-
-#' @export
-#' @import rhdf5
-setMethod("storeDelayedObject", "ANY", function(x, handle, name, version=package_version("1.1"), ...) {
-    ghandle <- H5Gcreate(handle, name)
-    on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
-
-    h5_write_attribute(ghandle, "delayed_type", "array", scalar=TRUE)
-    h5_write_attribute(ghandle, "delayed_array", "custom takane seed array", scalar=TRUE)
-
-    exdir <- file.path(dirname(H5Fget_name(handle)), "seeds")
-    dir.create(exdir, showWarnings=FALSE)
-    n <- length(list.files(exdir))
-    saveObject(x, file.path(exdir, n), ...)
-
-    h5_write_vector(ghandle, "dimensions", dim(x), type="H5T_NATIVE_UINT32", compress=0)
-    h5_write_vector(ghandle, "type", to_value_type(type(x)), scalar=TRUE)
-    h5_write_vector(ghandle, "index", n, type="H5T_NATIVE_UINT32", scalar=TRUE)
-})
-
-#' @import alabaster.base rhdf5 DelayedArray
-chihaya_array_registry[["custom takane seed array"]] <- function(handle, version, custom.takane.realize=FALSE, ...) {
-    index <- h5_read_vector(handle, "index")
-    out <- readObject(file.path(dirname(H5Fget_name(handle)), "seeds", index), ...)
-
-    if (custom.takane.realize) {
-        if (is_sparse(out)) {
-            out <- as(out, "SVT_SparseArray")
-        } else {
-            out <- as.array(out)
-        }
-    }
-
-    out
 }
 
 #######################################################
@@ -797,4 +774,134 @@ chihaya_operation_registry[["unary arithmetic"]] <- function(handle, version, ..
     }
 
     output
+}
+
+#######################################################
+#######################################################
+
+#' @export
+#' @import rhdf5
+setMethod("storeDelayedObject", "ANY", function(x, handle, name, version=package_version("1.1"), ...) {
+    ghandle <- H5Gcreate(handle, name)
+    on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
+
+    if (is(x, "LowRankMatrixSeed")) { # From BiocSingular.
+        h5_write_attribute(ghandle, "delayed_type", "operation", scalar=TRUE)
+        h5_write_attribute(ghandle, "delayed_operation", "matrix product", scalar=TRUE)
+
+        storeDelayedObject(x@rotation, ghandle, "left_seed", version=version, ...)
+        h5_write_vector(ghandle, "left_orientation", "N")
+        storeDelayedObject(x@components, ghandle, "right_seed", version=version, ...)
+        h5_write_vector(ghandle, "right_orientation", "T")
+
+    } else if (is(x, "ResidualMatrixSeed")) {
+        h5_write_attribute(ghandle, "delayed_type", "operation", scalar=TRUE)
+        h5_write_vector(ghandle, "_r_type_hint", "residual matrix", scalar=TRUE)
+
+        # Mimic a transposition operation.
+        xhandle <- ghandle
+        if (x@transposed) {
+            h5_write_attribute(ghandle, "delayed_operation", "transpose", scalar=TRUE)
+            h5_write_vector(ghandle, "permutation", c(1L, 0L), type="H5T_NATIVE_UINT32") 
+            xhandle <- H5Gcreate(ghandle, "seed")
+            on.exit(H5Gclose(xhandle), add=TRUE, after=FALSE)
+            h5_write_attribute(xhandle, "delayed_type", "operation", scalar=TRUE)
+        }
+
+        # Mimic a binary subtraction.
+        h5_write_attribute(xhandle, "delayed_operation", "binary arithmetic", scalar=TRUE)
+        h5_write_vector(xhandle, "method", "-", scalar=TRUE)
+        storeDelayedObject(x@.matrix, xhandle, "left", version=version, ...)
+
+        # Mimic a matrix product.
+        rhandle <- H5Gcreate(xhandle, "right")
+        on.exit(H5Gclose(rhandle), add=TRUE, after=FALSE)
+        h5_write_attribute(rhandle, "delayed_type", "operation", scalar=TRUE)
+        h5_write_attribute(rhandle, "delayed_operation", "matrix product", scalar=TRUE)
+        storeDelayedObject(x@Q, rhandle, "left_seed", version=version, ...)
+        h5_write_vector(rhandle, "left_orientation", "N", scalar=TRUE)
+        storeDelayedObject(x@Qty, rhandle, "right_seed", version=version, ...)
+        h5_write_vector(rhandle, "right_orientation", "N", scalar=TRUE)
+
+    } else {
+        h5_write_attribute(ghandle, "delayed_type", "array", scalar=TRUE)
+        h5_write_attribute(ghandle, "delayed_array", "custom takane seed array", scalar=TRUE)
+
+        exdir <- file.path(dirname(H5Fget_name(handle)), "seeds")
+        dir.create(exdir, showWarnings=FALSE)
+        n <- length(list.files(exdir))
+        saveObject(x, file.path(exdir, n), ...)
+
+        h5_write_vector(ghandle, "dimensions", dim(x), type="H5T_NATIVE_UINT32", compress=0)
+        h5_write_vector(ghandle, "type", to_value_type(type(x)), scalar=TRUE)
+        h5_write_vector(ghandle, "index", n, type="H5T_NATIVE_UINT32", scalar=TRUE)
+    }
+})
+
+#' @import alabaster.base rhdf5 DelayedArray
+chihaya_array_registry[["custom takane seed array"]] <- function(handle, version, custom.takane.realize=FALSE, ...) {
+    index <- h5_read_vector(handle, "index")
+    out <- readObject(file.path(dirname(H5Fget_name(handle)), "seeds", index), ...)
+
+    if (custom.takane.realize) {
+        if (is_sparse(out)) {
+            out <- as(out, "SVT_SparseArray")
+        } else {
+            out <- as.array(out)
+        }
+    }
+
+    out
+}
+
+#' @importFrom Matrix t
+chihaya_operation_registry[["matrix product"]] <- function(handle, version, ...) {
+    L <- as.matrix(reloadDelayedObject(handle, "left_seed"))
+    Lori <- h5_read_vector(handle, "left_orientation")
+    if (length(Lori) == 1 && as.character(Lori) == "T") {
+        L <- t(L)
+    } 
+
+    R <- as.matrix(reloadDelayedObject(handle, "right_seed"))
+    Rori <- h5_read_vector(handle, "right_orientation")
+    if (length(Rori) == 1 && as.character(Rori) == "N") {
+        R <- t(R)
+    } 
+
+    BiocSingular::LowRankMatrix(L, R)
+}
+
+chihaya_type_hint_registry[["residual matrix"]] <- function(handle, version, ...) {
+    if (!isNamespaceLoaded("ResidualMatrix")) {
+        loadNamespace("ResidualMatrix")
+    }
+
+    stopifnot(identical(h5_read_attribute(handle, "delayed_type"), "operation"))
+    optype <- h5_read_attribute(handle, "delayed_operation")
+
+    transposed <- FALSE
+    xhandle <- handle
+    if (optype == "transpose") {
+        transposed <- TRUE
+        xhandle <- H5Gopen(handle, "seed")
+        on.exit(H5Gclose(xhandle), add=TRUE, after=FALSE)
+        stopifnot(identical(h5_read_attribute(xhandle, "delayed_type"), "operation"))
+        optype <- h5_read_attribute(xhandle, "delayed_operation")
+    }
+
+    stopifnot(identical(optype, "binary arithmetic"))
+    stopifnot(identical(h5_read_vector(xhandle, "method"), "-"))
+    .matrix <- reloadDelayedObject(xhandle, "left")
+
+    rhandle <- H5Gopen(xhandle, "right")
+    on.exit(H5Gclose(rhandle), add=TRUE, after=FALSE)
+    stopifnot(identical(h5_read_attribute(rhandle, "delayed_type"), "operation"))
+    stopifnot(identical(h5_read_attribute(rhandle, "delayed_operation"), "matrix product"))
+    stopifnot(identical(h5_read_vector(rhandle, "left_orientation"), "N"))
+    stopifnot(identical(h5_read_vector(rhandle, "right_orientation"), "N"))
+
+    Q <- as.matrix(reloadDelayedObject(rhandle, "left_seed", version=version, ...))
+    Qty <- as.matrix(reloadDelayedObject(rhandle, "right_seed", version=version, ...))
+    seed <- new("ResidualMatrixSeed", .matrix = .matrix, Q = Q, Qty = Qty, transposed = transposed)
+    DelayedArray(seed)
 }

@@ -553,3 +553,64 @@ test_that("DelayedUnaryIsoOpWithArgs handles repeated operations correctly (oppo
     expect_identical(as.matrix(Z), as.matrix(roundtrip))
     expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpWithArgs")
 })
+
+#######################################################
+#######################################################
+
+test_that("saving of a LowRankMatrix works correctly", {
+    left <- matrix(rnorm(100000), ncol=20)
+    right <- matrix(rnorm(50000), ncol=20)
+
+    library(BiocSingular)
+    thing <- LowRankMatrix(left, right)
+    temp <- saveDelayed(thing)
+
+    out <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(thing, out)
+})
+
+test_that("saving of a ResidualMatrix works correctly", {
+    y <- rsparsematrix(80, 50, 0.5)
+    design <- model.matrix(~gl(8, 10))
+    thing <- ResidualMatrix::ResidualMatrix(y, design=design)
+
+    # Round-trips properly.
+    temp <- saveDelayed(thing)
+    out <- loadDelayed(temp)
+    out@seed@.matrix <- as(out@seed@.matrix, "dgCMatrix")
+    expect_identical(thing, out)
+    expect_s4_class(out, "ResidualMatrix")
+
+    # Works when transposed.
+    thing2 <- t(thing)
+    temp2 <- saveDelayed(thing2)
+    out <- loadDelayed(temp2)
+    out@seed@.matrix <- as(out@seed@.matrix, "dgCMatrix")
+    expect_identical(thing2, out)
+    expect_s4_class(out, "ResidualMatrix")
+
+    # Same result if we ignore the type hint.
+    (function() {
+        fhandle <- H5Fopen(temp, "H5F_ACC_RDWR")
+        on.exit(H5Fclose(fhandle))
+        ghandle <- H5Gopen(fhandle, "FOO")
+        on.exit(H5Gclose(ghandle))
+        H5Ldelete(ghandle, "_r_type_hint")
+    })()
+
+    out <- loadDelayed(temp)
+    expect_false(is(out, "ResidualMatrix"))
+    expect_identical(unname(as.matrix(thing)), unname(as.matrix(out)))
+
+    (function() {
+        fhandle <- H5Fopen(temp2, "H5F_ACC_RDWR")
+        on.exit(H5Fclose(fhandle))
+        ghandle <- H5Gopen(fhandle, "FOO")
+        on.exit(H5Gclose(ghandle))
+        H5Ldelete(ghandle, "_r_type_hint")
+    })()
+
+    out <- loadDelayed(temp2)
+    expect_false(is(out, "ResidualMatrix"))
+    expect_identical(unname(as.matrix(thing2)), unname(as.matrix(out)))
+})
