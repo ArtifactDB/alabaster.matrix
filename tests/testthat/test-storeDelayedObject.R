@@ -259,13 +259,13 @@ test_that("DelayedSubassign works when only one index is supplied", {
 })
 
 test_that("DelayedSubassign works when the replacement is a DelayedArray", {
-#    X <- DelayedArray(matrix(rbinom(100, 1, 0.5) == 0, ncol=20))
-#    X[1:2,3:5] <- DelayedArray(matrix(-runif(6), ncol=3)) + 1
-#    temp <- saveDelayed(X)
-#
-#    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
-#    expect_identical(X, roundtrip)
-#    expect_s4_class(roundtrip@seed, "DelayedSubassign")
+    X <- DelayedArray(matrix(rbinom(100, 1, 0.5) == 0, ncol=20))
+    X[1:2,3:5] <- DelayedArray(matrix(-runif(6), ncol=3)) + 1
+    temp <- saveDelayed(X)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(as.matrix(X), as.matrix(roundtrip)) # see comments below for the DelayedUnaryIsoOpStack tests.
+    expect_s4_class(roundtrip@seed, "DelayedSubassign")
 })
 
 #######################################################
@@ -296,3 +296,148 @@ test_that("DelayedSubset works when only one index is supplied", {
     expect_identical(Y, roundtrip)
     expect_s4_class(roundtrip@seed, "DelayedSubset")
 })
+
+#######################################################
+#######################################################
+
+# These use as.matrix() in comparisons to avoid problems with environment
+# comparisons in the functions stored in OPS.
+
+test_that("DelayedUnaryIsoOpStack works for multiple operations", {
+    X <- DelayedArray(matrix(runif(100), ncol=20))
+    Z <- abs(X - 0.5)
+    expect_s4_class(Z@seed, "DelayedUnaryIsoOpStack")
+    expect_type(Z@seed@seed, "double")
+
+    temp <- saveDelayed(Z)
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpStack")
+})
+
+test_that("DelayedUnaryIsoOpStack works on both sides", {
+    X <- DelayedArray(matrix(rpois(100, 5) + 1L, ncol=20))
+    Z <- 5 / X
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpStack")
+
+    # Trying on the other side with another non-commutative op.
+    Z <- X - 10
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpStack")
+})
+
+test_that("DelayedUnaryIsoOpStack works for log", {
+    X <- DelayedArray(matrix(runif(100), ncol=20))
+    Z <- log(X)
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpStack")
+
+    # Works with non-default base.
+    Z <- log(X, base=3)
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpStack")
+})
+
+test_that("DelayedUnaryIsoOpStack works (comparisons)", {
+    X <- DelayedArray(matrix(runif(1000), ncol=20))
+    Z <- 0.5 < X
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpStack")
+
+    Z <- X <= 0.2
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpStack")
+})
+
+test_that("DelayedUnaryIsoOpStack works (logic operations)", {
+    X <- DelayedArray(matrix(runif(1000), ncol=20) > 0.5)
+    Z <- X & TRUE
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpStack")
+
+    # Same for the ||.
+    Z <- X | FALSE
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpStack")
+
+    # Same for !
+    Z <- !X
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpStack")
+})
+
+test_that("DelayedUnaryIsoOpStack works for unary arithmetic", {
+    X <- DelayedArray(matrix(rnorm(1000), ncol=20))
+    Z <- -X
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpStack")
+
+    Z <- +X
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_type(roundtrip@seed, "double")
+})
+
+test_that("DelayedUnaryIsoOpStack works for other unary operations", {
+    suppressWarnings(X <- DelayedArray(matrix(log(rnorm(1000)), ncol=20)))
+    Z <- is.nan(X)
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    suppressWarnings(expect_identical(as.matrix(Z), as.matrix(roundtrip)))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpStack")
+})
+
+test_that("DelayedUnaryIsoOpStack works for Math2", {
+    X <- DelayedArray(matrix(rnorm(1000) * 10, ncol=20))
+    Z <- round(X)
+    temp <- tempfile(fileext=".h5")
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpStack")
+
+    # Throwing in some non-standard digits.
+    Z <- signif(X, digits=3)
+    temp <- tempfile(fileext=".h5")
+    temp <- saveDelayed(Z)
+
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as.matrix(Z), as.matrix(roundtrip))
+    expect_s4_class(roundtrip@seed, "DelayedUnaryIsoOpStack")
+})
+

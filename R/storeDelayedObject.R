@@ -105,6 +105,10 @@ reloadDelayedObject <- function(handle, name, version=package_version("1.1"), ..
         FUN <- chihaya_operation_registry[[optype]]
     }
 
+    if (is.null(FUN)) {
+        stop(objtype, " type '", optype, "' is not yet supported")
+    }
+
     out <- FUN(ghandle, version=version, ...)
     if (!is(out, "DelayedArray")) {
         out <- DelayedArray(out)
@@ -470,15 +474,15 @@ chihaya.dump.unary.Math <- function(handle, OP) {
 
         if (generic %in% direct.support) {
             h5_write_attribute(handle, "delayed_operation", 'unary math')
-            h5_write_dataset(handle, "method", generic, scalar=TRUE)
+            h5_write_vector(handle, "method", generic, scalar=TRUE)
             return(TRUE)
         }
 
         log.base.support <- c(log2=2, log10=10)
         if (generic %in% names(log.base.support)) {
             h5_write_attribute(handle, "delayed_operation", 'unary math')
-            h5_write_dataset(handle, "method", "log", scalar=TRUE)
-            h5_write_dataset(handle, "base", log.base.support[[generic]], type="H5T_NATIVE_DOUBLE", scalar=TRUE)
+            h5_write_vector(handle, "method", "log", scalar=TRUE)
+            h5_write_vector(handle, "base", log.base.support[[generic]], type="H5T_NATIVE_DOUBLE", scalar=TRUE)
             return(TRUE)
         }
     }
@@ -486,11 +490,11 @@ chihaya.dump.unary.Math <- function(handle, OP) {
     # Special case for the general case log.
     if (isTRUE(all.equal(as.character(body(OP)), c("log", "a", "base")))) {
         h5_write_attribute(handle, "delayed_operation", 'unary math')
-        h5_write_dataset(handle, "method", "log", scalar=TRUE)
+        h5_write_vector(handle, "method", "log", scalar=TRUE)
 
         base <- envir$base
         if (base != exp(1)) {
-            h5_write_dataset(handle, "base", base, type="H5T_NATIVE_DOUBLE", scalar=TRUE)
+            h5_write_vector(handle, "base", base, type="H5T_NATIVE_DOUBLE", scalar=TRUE)
         }
         return(TRUE)
     }
@@ -504,8 +508,8 @@ chihaya.dump.unary.Math2 <- function(handle, OP) {
 
     if (generic %in% getGroupMembers("Math2")) {
         h5_write_attribute(handle, "delayed_operation", 'unary math')
-        h5_write_dataset(handle, "method", generic, scalar=TRUE)
-        h5_write_dataset(handle, "digits", envir$digits, type="H5T_NATIVE_INT32", scalar=TRUE)
+        h5_write_vector(handle, "method", generic, scalar=TRUE)
+        h5_write_vector(handle, "digits", envir$digits, type="H5T_NATIVE_INT32", scalar=TRUE)
         return(TRUE)
     }
 
@@ -529,7 +533,7 @@ chihaya.dump.unary.Ops <- function(handle, OP) {
         delayed_op <- "unary logic"
         generic <- translate_logic_Ops_for_chihaya(generic)
     }
-    h5_write_attribute(handle, "operation", delayed_op, scalar=TRUE)
+    h5_write_attribute(handle, "delayed_operation", delayed_op, scalar=TRUE)
     h5_write_vector(handle, "method", generic, scalar=TRUE)
 
     e1 <- envir$e1
@@ -563,17 +567,17 @@ chihaya.dump.unary.Ops <- function(handle, OP) {
 
 chihaya.unary.logic.Ops <- c(is.infinite="is_infinite", is.nan="is_nan", is.finite="is_finite")
 
-chihaya.dump.unary.other <- function(file, name, OP) {
+chihaya.dump.unary.other <- function(handle, OP) {
     envir <- environment(OP)
     generic <- envir$`.Generic`
 
     if (generic == "!") {
-        h5_write_attribute(handle, "operation", "unary logic", scalar=TRUE)
+        h5_write_attribute(handle, "delayed_operation", "unary logic", scalar=TRUE)
         h5_write_vector(handle, "method", "!", scalar=TRUE)
         return(TRUE)
 
     } else if (generic %in% names(chihaya.unary.logic.Ops)) {
-        h5_write_attribute(handle, "operation", "unary special check", scalar=TRUE)
+        h5_write_attribute(handle, "delayed_operation", "unary special check", scalar=TRUE)
         h5_write_vector(handle, "method", chihaya.unary.logic.Ops[[generic]], scalar=TRUE)
         return(TRUE)
     }
@@ -583,29 +587,29 @@ chihaya.dump.unary.other <- function(file, name, OP) {
 
 save_iso_op_stack <- function(handle, name, OPS, i, seed, version, ...) {
     if (i == 0L) {
-        storeDelayedObject(handle, name, version=version, ...)
+        storeDelayedObject(seed, handle, name, version=version, ...)
         return(NULL)
     }
 
     OP <- OPS[[i]]
     ghandle <- H5Gcreate(handle, name)
     on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
-    h5_write_attribute(handle, "delayed_type", 'operation')
+    h5_write_attribute(ghandle, "delayed_type", 'operation')
 
     if (chihaya.dump.unary.Math(ghandle, OP)) {
-        return(save_iso_op_stack(handle, name, OPS, i - 1L, seed=seed, version=version, ...))
+        return(save_iso_op_stack(ghandle, "seed", OPS, i - 1L, seed=seed, version=version, ...))
     }
 
     if (chihaya.dump.unary.Math2(ghandle, OP)) {
-        return(save_iso_op_stack(handle, name, OPS, i - 1L, seed=seed, version=version, ...))
+        return(save_iso_op_stack(ghandle, "seed", OPS, i - 1L, seed=seed, version=version, ...))
     }
 
     if (chihaya.dump.unary.Ops(ghandle, OP)) {
-        return(save_iso_op_stack(handle, name, OPS, i - 1L, seed=seed, version=version, ...))
+        return(save_iso_op_stack(ghandle, "seed", OPS, i - 1L, seed=seed, version=version, ...))
     }
 
     if (chihaya.dump.unary.other(ghandle, OP)) {
-        return(save_iso_op_stack(handle, name, OPS, i - 1L, seed=seed, version=version, ...))
+        return(save_iso_op_stack(ghandle, "seed", OPS, i - 1L, seed=seed, version=version, ...))
     }
 
     stop("unknown OPS[[", i, "]] function in ", class(x))
@@ -643,7 +647,7 @@ setMethod("storeDelayedObject", "DelayedUnaryIsoOpWithArgs", function(x, handle,
     } else if (chosen %in% chihaya.supported.Arith) {
         h5_write_attribute(handle, "delayed_operation", 'unary arithmetic')
     }
-    h5_write_dataset(handle, "method", chosen)
+    h5_write_vector(handle, "method", chosen)
 
     # Saving the left and right args. There should only be one or the other.
     # as the presence of both is not commutative.
@@ -660,8 +664,8 @@ setMethod("storeDelayedObject", "DelayedUnaryIsoOpWithArgs", function(x, handle,
         along <- x@Ralong[1]
     }
 
-    h5_write_dataset(file, name, "side", if (left) "left" else "right", scalar=TRUE)
-    h5_write_dataset(file, name, "along", along - 1L, type="H5T_NATIVE_UINT32", scalar=TRUE)
+    h5_write_vector(file, name, "side", if (left) "left" else "right", scalar=TRUE)
+    h5_write_vector(file, name, "along", along - 1L, type="H5T_NATIVE_UINT32", scalar=TRUE)
 
     if (length(args) == 1L) {
         save_vector_for_chihaya(handle, "value", args, version=version, scalar=TRUE)
@@ -676,7 +680,7 @@ setMethod("storeDelayedObject", "DelayedUnaryIsoOpWithArgs", function(x, handle,
 })
 
 chihaya_operation_registry[["unary math"]] <- function(handle, version, ...) {
-    x <- reloadDelayedObject(handle, version=version, ...)
+    x <- reloadDelayedObject(handle, "seed", version=version, ...)
     method <- h5_read_vector(handle, "method")
     output <- NULL
 
@@ -690,11 +694,11 @@ chihaya_operation_registry[["unary math"]] <- function(handle, version, ...) {
 
     } else if (method %in% getGroupMembers("Math2")) {
         digits <- h5_read_vector(handle, "digits")
-        FUN <- get(op.name, envir=baseenv())
+        FUN <- get(method, envir=baseenv())
         output <- FUN(x, digits=digits)
 
     } else {
-        FUN <- get(op.name, envir=baseenv())
+        FUN <- get(method, envir=baseenv())
         output <- FUN(x)
     }
 
@@ -706,8 +710,8 @@ apply_unary_op_with_value <- function(x, op, side, handle, version) {
     FUN <- get(op, envir=baseenv())
 
     simple <- FALSE
-    if (!h5exists(file, name, "along"))  {
-        simple <- TRUE # i.e., scalar.
+    if (length(value) == 1L) {
+        simple <- TRUE
     } else {
         along <- h5_read_vector(file, "along")
         simple <- along == 0
@@ -744,13 +748,14 @@ apply_unary_op_with_value <- function(x, op, side, handle, version) {
 }
 
 chihaya_operation_registry[["unary logic"]] <- function(handle, version, ...) {
-    x <- reloadDelayedObject(handle, version=version, ...)
+    x <- reloadDelayedObject(handle, "seed", version=version, ...)
     method <- h5_read_vector(handle, "method")
 
     output <- NULL
     if (method == "!") {
         output <- !x
     } else {
+        method <- translate_logic_Ops_from_chihaya(method)
         side <- h5_read_vector(handle, "side")
         output <- apply_unary_op_with_value(x, op=method, side=side, handle=handle, version=version)
     }
@@ -759,14 +764,21 @@ chihaya_operation_registry[["unary logic"]] <- function(handle, version, ...) {
 }
 
 chihaya_operation_registry[["unary comparison"]] <- function(handle, version, ...) {
-    x <- reloadDelayedObject(handle, version=version, ...)
+    x <- reloadDelayedObject(handle, "seed", version=version, ...)
     method <- h5_read_vector(handle, "method")
     side <- h5_read_vector(handle, "side")
     apply_unary_op_with_value(x, op=method, side=side, handle=handle, version=version)
 }
 
+chihaya_operation_registry[["unary special check"]] <- function(handle, version, ...) {
+    x <- reloadDelayedObject(handle, "seed", version=version, ...)
+    method <- h5_read_vector(handle, "method")
+    method <- sub("_", ".", method)
+    get(method, envir=baseenv())(x)
+}
+
 chihaya_operation_registry[["unary arithmetic"]] <- function(handle, version, ...) {
-    x <- reloadDelayedObject(handle, version=version, ...)
+    x <- reloadDelayedObject(handle, "seed", version=version, ...)
     method <- h5_read_vector(handle, "method")
     side <- h5_read_vector(handle, "side")
 
