@@ -156,6 +156,86 @@ chihaya_array_registry[["constant array"]] <- function(handle, version, ...) {
 #######################################################
 #######################################################
 
+#' @import rhdf5 alabaster.base
+save_dense_array_for_chihaya <- function(x, handle, name, extract.native, version=package_version("1.1"), ...) {
+    ghandle <- H5Gcreate(handle, name)
+    on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
+
+    h5_write_attribute(ghandle, "delayed_type", "array", scalar=TRUE)
+    h5_write_attribute(ghandle, "delayed_array", "dense array", scalar=TRUE)
+
+    optimized <- optimize_storage(x)
+    h5_write_array(
+        ghandle, 
+        name="data", 
+        x=x, 
+        type=optimized$type, 
+        placeholder=optimized$placeholder, 
+        extract.native=extract.native
+    )
+
+    dhandle <- H5Dopen(ghandle, "data")
+    on.exit(H5Dclose(dhandle), add=TRUE, after=FALSE)
+    h5_write_attribute(dhandle, "type", to_value_type(type(x)), scalar=TRUE)
+    if (!is.null(optimized$placeholder)) {
+        h5_write_attribute(dhandle, "missing_placeholder", optimized$placeholder, type=optimized$type, scalar=TRUE)
+    }
+
+    h5_write_vector(ghandle, "native", 0L, type="H5T_NATIVE_INT8", scalar=TRUE)
+    save_names(ghandle, x, group="dimnames", transpose=TRUE)
+    invisible(NULL)
+}
+
+#' @export
+setMethod("storeDelayedObject", "array", function(x, handle, name, version=package_version("1.1"), save.external.array=FALSE, ...) {
+    if (save.external.array) {
+        return(callNextMethod()) # calls the ANY method
+    }
+    save_dense_array_for_chihaya(x, handle, name, extract.native=identity, version=version, ...)
+})
+
+#' @export
+setMethod("storeDelayedObject", "denseMatrix", function(x, handle, name, version=package_version("1.1"), save.external.array=FALSE, ...) {
+    if (save.external.array) {
+        return(callNextMethod()) # calls the ANY method.
+    } 
+
+    extract.native <- NULL
+    if (is(x, "dMatrix") || is(x, "lMatrix")) {
+        extract.native <- function(y) y@x
+    }
+    save_dense_array_for_chihaya(x, handle, name, extract.native=extract.native, version=version, ...)
+})
+
+#' @import rhdf5 DelayedArray
+chihaya_array_registry[["dense array"]] <- function(handle, version, ...) {
+    dhandle <- H5Dopen(handle, "data")
+    on.exit(H5Dclose(dhandle), add=TRUE, after=FALSE)
+    data <- H5Dread(dhandle)
+    if (is.raw(data)) {
+        storage.mode(data) <- "integer"
+    }
+
+    type <- h5_read_attribute(dhandle, "type")
+    type <- to_alabaster_type(type)
+    missing.placeholder <- h5_read_attribute(dhandle, "missing_placeholder", check=TRUE, default=NULL)
+    data <- h5_cast(data, expected.type=type, missing.placeholder=missing.placeholder)
+
+    if (h5_read_vector(handle, "native") == 1L) {
+        data <- t(data)
+    }
+
+    names <- load_names(handle, length(dim(data)), group="dimnames")
+    if (!is.null(names)) {
+        dimnames(data) <- rev(names)
+    }
+
+    data
+}
+
+#######################################################
+#######################################################
+
 #' @export
 #' @import rhdf5
 setMethod("storeDelayedObject", "DelayedAbind", function(x, handle, name, version=package_version("1.1"), ...) {
