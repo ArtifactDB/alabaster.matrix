@@ -109,7 +109,7 @@ test_that("dense arrays are saved correctly", {
     expect_identical(unname(as.array(X)), roundtrip@seed)
 })
 
-test_that("dense array handles dimnames", {
+test_that("dense array saving handles dimnames", {
     X <- matrix(rpois(60, 5), ncol=20)
     rownames(X) <- LETTERS[1:3]
     colnames(X) <- letters[1:20]
@@ -119,7 +119,7 @@ test_that("dense array handles dimnames", {
     expect_identical(X, roundtrip@seed)
 })
 
-test_that("dense array handles a bit of transposition", {
+test_that("dense array saving handles a bit of transposition", {
     X <- DelayedArray(matrix(rpois(60, 5), ncol=20))
     temp <- saveDelayed(X)
 
@@ -136,7 +136,7 @@ test_that("dense array handles a bit of transposition", {
     expect_identical(t(X@seed), roundtrip@seed)
 })
 
-test_that("dense array saves external arrays if requested", {
+test_that("dense arrays are saved to external arrays if requested", {
     X <- DelayedArray(matrix(rpois(60, 5), ncol=20))
     temp <- saveDelayed(X, save.external.array=TRUE)
     expect_true(file.exists(file.path(dirname(temp), "seeds", 0)))
@@ -148,6 +148,56 @@ test_that("dense array saves external arrays if requested", {
     expect_true(file.exists(file.path(dirname(temp), "seeds", 0)))
     roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
     expect_identical(unname(as.array(X)), as.array(roundtrip@seed))
+})
+
+#######################################################
+#######################################################
+
+test_that("sparse matrices are saved correctly", {
+    X <- DelayedArray(Matrix::rsparsematrix(20, 30, 0.2))
+    temp <- saveDelayed(X)
+    roundtrip <- loadDelayed(temp)
+    expect_s4_class(roundtrip@seed, "SVT_SparseMatrix")
+    expect_identical(unname(as.matrix(X)), as.matrix(roundtrip))
+
+    # Checking that it works in CSR mode. 
+    X <- Matrix::rsparsematrix(20, 30, 0.2)
+    X <- as(X > 0, "RsparseMatrix")
+    Z <- DelayedArray(X)
+    temp <- saveDelayed(Z)
+    roundtrip <- loadDelayed(temp)
+    expect_s4_class(roundtrip@seed, "SVT_SparseMatrix")
+    expect_identical(unname(as.matrix(X)), as.matrix(roundtrip))
+
+    # Works with SVT sparse matrix inputs.
+    X <- matrix(rpois(100, 0.5) * 10L, ncol=25)
+    X <- as(X, "SVT_SparseMatrix")
+    Z <- DelayedArray(X)
+    temp <- saveDelayed(Z)
+    roundtrip <- loadDelayed(temp)
+    expect_s4_class(roundtrip@seed, "SVT_SparseMatrix")
+    expect_identical(unname(as.matrix(X)), as.matrix(roundtrip))
+})
+
+test_that("sparse matrix saving handles dimnames", {
+    X <- Matrix::rsparsematrix(20, 30, 0.2)
+    rownames(X) <- LETTERS[1:20]
+    colnames(X) <- 1:30
+
+    temp <- saveDelayed(DelayedArray(X))
+    roundtrip <- loadDelayed(temp)
+    expect_identical(as(X, "SVT_SparseMatrix"), roundtrip@seed)
+})
+
+test_that("sparse matrices are saved to external arrays if requested", {
+    X <- matrix(rpois(200, 1) - 1L, ncol=20)
+    X <- as(X, "SVT_SparseMatrix")
+    temp <- saveDelayed(DelayedArray(X), save.external.array=TRUE)
+    expect_true(file.exists(file.path(dirname(temp), "seeds", 0)))
+
+    roundtrip <- loadDelayed(temp)
+    expect_true(is_sparse(roundtrip))
+    expect_identical(as.matrix(X), as.matrix(roundtrip))
 })
 
 #######################################################

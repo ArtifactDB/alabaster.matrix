@@ -236,6 +236,88 @@ chihaya_array_registry[["dense array"]] <- function(handle, version, ...) {
 #######################################################
 #######################################################
 
+#' @import rhdf5
+save_sparse_matrix_for_chihaya <- function(x, handle, name, version=package_version("1.1"), ...) {
+    ghandle <- H5Gcreate(handle, name)
+    on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
+
+    h5_write_attribute(ghandle, "delayed_type", "array", scalar=TRUE)
+    h5_write_attribute(ghandle, "delayed_array", "sparse matrix", scalar=TRUE)
+
+    h5_write_vector(ghandle, "shape", dim(x), type="H5T_NATIVE_UINT32")
+
+    optimized <- optimize_storage(x)
+    h5_write_sparse_matrix(x, handle=ghandle, details=optimized)
+
+    dhandle <- H5Dopen(ghandle, "data")
+    on.exit(H5Dclose(dhandle), add=TRUE, after=FALSE)
+    h5_write_attribute(dhandle, "type", to_value_type(type(x)), scalar=TRUE)
+    if (!is.null(optimized$placeholder)) {
+        h5_write_attribute(dhandle, missingPlaceholderName, optimized$placeholder, type=optimized$type, scalar=TRUE)
+    }
+
+    # Better if we didn't save the layout at all, but whatever.
+    col <- h5_read_attribute(ghandle, "layout") == "CSC"
+    h5_write_vector(ghandle, "by_column", as.integer(col), type="H5T_NATIVE_INT8")
+    H5Adelete(ghandle, "layout") 
+
+    save_names(ghandle, x, group="dimnames")
+    invisible(NULL)
+}
+
+#' @export
+setMethod("storeDelayedObject", "sparseMatrix", function(x, handle, name, version=package_version("1.1"), save.external.array=FALSE, ...) {
+    if (save.external.array) {
+        return(callNextMethod()) # calls the ANY method
+    }
+    save_sparse_matrix_for_chihaya(x, handle, name, version=version, ...)
+})
+
+#' @export
+setMethod("storeDelayedObject", "SVT_SparseMatrix", function(x, handle, name, version=package_version("1.1"), save.external.array=FALSE, ...) {
+    if (save.external.array) {
+        return(callNextMethod()) # calls the ANY method
+    }
+    save_sparse_matrix_for_chihaya(x, handle, name, version=version, ...)
+})
+
+#' @import rhdf5 DelayedArray
+chihaya_array_registry[["sparse matrix"]] <- function(handle, version, ...) {
+    indices <- h5_read_vector(handle, "indices")
+    indptr <- h5_read_vector(handle, "indptr")
+    data <- load_vector_for_chihaya(handle, "data", version=version)
+
+    svt <- vector("list", length(indptr) - 1L)
+    for (i in seq_along(svt)) {
+        idx <- indptr[i] + seq_len(indptr[i+1] - indptr[i])
+        if (length(idx)) {
+            svt[[i]] <- list(indices[idx], data[idx])
+        }
+    }
+
+    dim <- h5_read_vector(handle, "shape")
+    dn <- load_names(handle, 2L, group="dimnames")
+    if (is.null(dn)) {
+        dn <- list(NULL, NULL)
+    }
+
+    transposed <- (h5_read_vector(handle, "by_column") == 0L)
+    if (transposed) {
+        dn <- rev(dn)
+        dim <- rev(dim)
+    }
+
+    output <- new("SVT_SparseMatrix", SVT=svt, dim=dim, type=typeof(data), dimnames=dn)
+    if (transposed) {
+        output <- t(output)
+    }
+
+    output
+}
+
+#######################################################
+#######################################################
+
 #' @export
 #' @import rhdf5
 setMethod("storeDelayedObject", "DelayedAbind", function(x, handle, name, version=package_version("1.1"), ...) {
