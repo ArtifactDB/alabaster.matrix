@@ -1054,6 +1054,7 @@ chihaya_type_hint_registry[["residual matrix"]] <- function(handle, version, ...
     stopifnot(identical(optype, "binary arithmetic"))
     stopifnot(identical(h5_read_vector(xhandle, "method"), "-"))
     .matrix <- reloadDelayedObject(xhandle, "left")
+    .matrix <- .matrix@seed # can't be a DelayedArray inside ResidualMatrix, for various reasons...
 
     rhandle <- H5Gopen(xhandle, "right")
     on.exit(H5Gclose(rhandle), add=TRUE, after=FALSE)
