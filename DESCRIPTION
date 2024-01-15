@@ -31,7 +31,7 @@ Suggests:
     ResidualMatrix
 LinkingTo: Rcpp
 VignetteBuilder: knitr
-RoxygenNote: 7.2.3
+RoxygenNote: 7.3.0
 biocViews:
     DataImport,
     DataRepresentation

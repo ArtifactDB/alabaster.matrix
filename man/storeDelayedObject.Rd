@@ -6,6 +6,17 @@
 \alias{storeDelayedObject,ConstantArraySeed-method}
 \alias{storeDelayedObject,DelayedAbind-method}
 \alias{storeDelayedObject,ANY-method}
+\alias{storeDelayedObject,DelayedAperm-method}
+\alias{storeDelayedObject,DelayedNaryIsoOp-method}
+\alias{storeDelayedObject,DelayedSetDimnames-method}
+\alias{storeDelayedObject,DelayedSubassign-method}
+\alias{storeDelayedObject,DelayedSubset-method}
+\alias{storeDelayedObject,DelayedUnaryIsoOpStack-method}
+\alias{storeDelayedObject,DelayedUnaryIsoOpWithArgs-method}
+\alias{storeDelayedObject,SVT_SparseMatrix-method}
+\alias{storeDelayedObject,array-method}
+\alias{storeDelayedObject,denseMatrix-method}
+\alias{storeDelayedObject,sparseMatrix-method}
 \title{Store operations in a DelayedArray}
 \arguments{
 \item{x}{Any of the delayed operation classes from \pkg{DelayedArray}.}
@@ -34,13 +45,11 @@ dir.create(temp)
 fpath <- file.path(temp, "foo.h5")
 fhandle <- H5Fcreate(fpath)
 storeDelayedObject(Y@seed, fhandle, "YAY")
-rhdf5::h5ls(fpath)
+rhdf5::h5ls(fhandle)
 H5Fclose(fhandle)
 
 fhandle <- H5Fopen(fpath, "H5F_ACC_RDONLY")
-ghandle <- H5Gopen(fhandle, "YAY")
-reloadDelayedObject(ghandle)
-H5Gclose(ghandle)
+reloadDelayedObject(ghandle, "YAY")
 H5Fclose(fhandle)
 
 }

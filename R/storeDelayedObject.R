@@ -21,13 +21,11 @@
 #' fpath <- file.path(temp, "foo.h5")
 #' fhandle <- H5Fcreate(fpath)
 #' storeDelayedObject(Y@seed, fhandle, "YAY")
-#' rhdf5::h5ls(fpath)
+#' rhdf5::h5ls(fhandle)
 #' H5Fclose(fhandle)
 #'
 #' fhandle <- H5Fopen(fpath, "H5F_ACC_RDONLY")
-#' ghandle <- H5Gopen(fhandle, "YAY")
-#' reloadDelayedObject(ghandle)
-#' H5Gclose(ghandle)
+#' reloadDelayedObject(ghandle, "YAY")
 #' H5Fclose(fhandle)
 #'
 #' @aliases
@@ -36,6 +34,17 @@
 #' storeDelayedObject,ConstantArraySeed-method
 #' storeDelayedObject,DelayedAbind-method
 #' storeDelayedObject,ANY-method
+#' storeDelayedObject,DelayedAperm-method
+#' storeDelayedObject,DelayedNaryIsoOp-method
+#' storeDelayedObject,DelayedSetDimnames-method
+#' storeDelayedObject,DelayedSubassign-method
+#' storeDelayedObject,DelayedSubset-method
+#' storeDelayedObject,DelayedUnaryIsoOpStack-method
+#' storeDelayedObject,DelayedUnaryIsoOpWithArgs-method
+#' storeDelayedObject,SVT_SparseMatrix-method
+#' storeDelayedObject,array-method
+#' storeDelayedObject,denseMatrix-method
+#' storeDelayedObject,sparseMatrix-method
 #'
 #' @name storeDelayedObject
 NULL
@@ -780,7 +789,7 @@ save_iso_op_stack <- function(handle, name, OPS, i, seed, version, ...) {
         return(save_iso_op_stack(ghandle, "seed", OPS, i - 1L, seed=seed, version=version, ...))
     }
 
-    stop("unknown OPS[[", i, "]] function in ", class(x))
+    stop("unknown OPS[[", i, "]] function when saving a 'DelayedUnaryIsoOpStack'")
 }
 
 #' @export
