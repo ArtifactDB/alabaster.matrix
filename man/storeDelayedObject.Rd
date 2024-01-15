@@ -49,7 +49,7 @@ rhdf5::h5ls(fhandle)
 H5Fclose(fhandle)
 
 fhandle <- H5Fopen(fpath, "H5F_ACC_RDONLY")
-reloadDelayedObject(ghandle, "YAY")
+reloadDelayedObject(fhandle, "YAY")
 H5Fclose(fhandle)
 
 }
