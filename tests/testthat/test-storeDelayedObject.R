@@ -1,4 +1,4 @@
-# This tests the behavior of the various HDF5-based seeds.
+# This tests the behavior of the various HDF4-based seeds.
 # library(testthat); library(alabaster.matrix); source("test-storeDelayedObject.R")
 
 library(DelayedArray)
@@ -6,19 +6,14 @@ library(rhdf5)
 
 saveDelayed <- function(x, ...) {
     tmp <- tempfile()
-    dir.create(tmp)
-    upath <- file.path(tmp, "foo.h5")
-
-    fhandle <- H5Fcreate(upath)
-    on.exit(H5Fclose(fhandle))
-    storeDelayedObject(x@seed, fhandle, "FOO", ...)
-    upath
+    saveObject(x, tmp, delayedarray.dispatch.pristine=FALSE, delayedarray.preserve.ops=TRUE, delayedarray.store.args=list(...))
+    stopifnot(readObjectFile(tmp)$type == "delayed_array")
+    tmp
 }
 
 loadDelayed <- function(path, ...) {
-    fhandle <- H5Fopen(path, "H5F_ACC_RDONLY")
-    on.exit(H5Fclose(fhandle))
-    reloadDelayedObject(fhandle, "FOO", ...)
+    raw <- readObject(path, delayedarray.reload.args=list(...))
+    DelayedArray(raw@seed@seed)
 }
 
 #######################################################
@@ -69,9 +64,9 @@ test_that("ConstantArrays behave correctly with NAs", {
 
     library(rhdf5)
     (function() {
-        fhandle <- H5Fopen(temp)
+        fhandle <- H5Fopen(file.path(temp, "array.h5"))
         on.exit(H5Fclose(fhandle), add=TRUE)
-        ghandle <- H5Gopen(fhandle, "FOO")
+        ghandle <- H5Gopen(fhandle, "delayed_array")
         on.exit(H5Gclose(ghandle), add=TRUE)
         dhandle <- H5Dopen(ghandle, "value")
         on.exit(H5Dclose(dhandle), add=TRUE)
@@ -94,19 +89,19 @@ test_that("dense arrays are saved correctly", {
     X <- DelayedArray(Matrix::Matrix(runif(60), ncol=20))
     temp <- saveDelayed(X)
     roundtrip <- loadDelayed(temp)
-    expect_identical(unname(as.array(X)), as.array(roundtrip@seed))
+    expect_identical(as.array(X), as.array(roundtrip@seed))
 
-    X <- DelayedArray(Matrix::Matrix(runif(60) > 0.5, ncol=20))
+    X <- DelayedArray(Matrix::Matrix(runif(60) > 0.5, ncol=20, sparse=FALSE))
     temp <- saveDelayed(X)
     roundtrip <- loadDelayed(temp)
-    expect_identical(unname(as.array(X)), as.array(roundtrip@seed))
+    expect_identical(as.array(X), as.array(roundtrip@seed))
 
     # Check that this works with other dense types.
     X <- DelayedArray(Matrix::triu(Matrix::Matrix(runif(100), ncol=10)))
     expect_s4_class(X@seed, "dtrMatrix")
     temp <- saveDelayed(X)
     roundtrip <- loadDelayed(temp)
-    expect_identical(unname(as.array(X)), roundtrip@seed)
+    expect_identical(as.array(X), roundtrip@seed)
 })
 
 test_that("dense array saving handles dimnames", {
@@ -124,9 +119,9 @@ test_that("dense array saving handles a bit of transposition", {
     temp <- saveDelayed(X)
 
     (function() {
-        fhandle <- H5Fopen(temp)
+        fhandle <- H5Fopen(file.path(temp, "array.h5"))
         on.exit(H5Fclose(fhandle), add=TRUE, after=FALSE)
-        ghandle <- H5Gopen(fhandle, "FOO")
+        ghandle <- H5Gopen(fhandle, "delayed_array")
         on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
         H5Ldelete(ghandle, "native")
         h5_write_vector(ghandle, "native", 1, type="H5T_NATIVE_UINT8", scalar=TRUE)
@@ -139,13 +134,13 @@ test_that("dense array saving handles a bit of transposition", {
 test_that("dense arrays are saved to external arrays if requested", {
     X <- DelayedArray(matrix(rpois(60, 5), ncol=20))
     temp <- saveDelayed(X, save.external.array=TRUE)
-    expect_true(file.exists(file.path(dirname(temp), "seeds", 0)))
+    expect_true(file.exists(file.path(temp, "seeds", 0)))
     roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
     expect_identical(X, roundtrip)
 
     X <- DelayedArray(Matrix::Matrix(runif(60), ncol=20))
     temp <- saveDelayed(X, save.external.array=TRUE)
-    expect_true(file.exists(file.path(dirname(temp), "seeds", 0)))
+    expect_true(file.exists(file.path(temp, "seeds", 0)))
     roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
     expect_identical(unname(as.array(X)), as.array(roundtrip@seed))
 })
@@ -193,7 +188,7 @@ test_that("sparse matrices are saved to external arrays if requested", {
     X <- matrix(rpois(200, 1) - 1L, ncol=20)
     X <- as(X, "SVT_SparseMatrix")
     temp <- saveDelayed(DelayedArray(X), save.external.array=TRUE)
-    expect_true(file.exists(file.path(dirname(temp), "seeds", 0)))
+    expect_true(file.exists(file.path(temp, "seeds", 0)))
 
     roundtrip <- loadDelayed(temp)
     expect_true(is_sparse(roundtrip))
@@ -583,9 +578,9 @@ test_that("DelayedUnaryIsoOpWithArgs works along the other dimension", {
     library(rhdf5)
     vec <- runif(20)
     (function() {
-        fhandle <- H5Fopen(temp)
+        fhandle <- H5Fopen(file.path(temp, "array.h5"))
         on.exit(H5Fclose(fhandle), add=TRUE, after=FALSE)
-        ghandle <- H5Gopen(fhandle, "FOO")
+        ghandle <- H5Gopen(fhandle, "delayed_array")
         on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
         H5Ldelete(ghandle, "along")
         h5_write_vector(ghandle, "along", 1, type="H5T_NATIVE_UINT8", scalar=TRUE)
@@ -628,9 +623,9 @@ test_that("DelayedUnaryIsoOpWithArgs handles NAs correctly", {
 
     library(rhdf5)
     (function() {
-        fhandle <- H5Fopen(temp)
+        fhandle <- H5Fopen(file.path(temp, "array.h5"))
         on.exit(H5Fclose(fhandle), add=TRUE)
-        dhandle <- H5Dopen(fhandle, "FOO/value")
+        dhandle <- H5Dopen(fhandle, "delayed_array/value")
         on.exit(H5Dclose(dhandle), add=TRUE)
         h5_write_attribute(dhandle, "missing_placeholder", 3, type="H5T_NATIVE_DOUBLE", scalar=TRUE)
     })()
@@ -709,9 +704,9 @@ test_that("saving of a ResidualMatrix works correctly", {
 
     # Same result if we ignore the type hint.
     (function() {
-        fhandle <- H5Fopen(temp, "H5F_ACC_RDWR")
+        fhandle <- H5Fopen(file.path(temp, "array.h5"), "H5F_ACC_RDWR")
         on.exit(H5Fclose(fhandle))
-        ghandle <- H5Gopen(fhandle, "FOO")
+        ghandle <- H5Gopen(fhandle, "delayed_array")
         on.exit(H5Gclose(ghandle))
         H5Ldelete(ghandle, "_r_type_hint")
     })()
@@ -721,9 +716,9 @@ test_that("saving of a ResidualMatrix works correctly", {
     expect_identical(unname(as.matrix(thing)), unname(as.matrix(out)))
 
     (function() {
-        fhandle <- H5Fopen(temp2, "H5F_ACC_RDWR")
+        fhandle <- H5Fopen(file.path(temp2, "array.h5"), "H5F_ACC_RDWR")
         on.exit(H5Fclose(fhandle))
-        ghandle <- H5Gopen(fhandle, "FOO")
+        ghandle <- H5Gopen(fhandle, "delayed_array")
         on.exit(H5Gclose(ghandle))
         H5Ldelete(ghandle, "_r_type_hint")
     })()

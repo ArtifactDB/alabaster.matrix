@@ -74,13 +74,24 @@ load_vector_for_chihaya <- function(handle, name, version) {
 #' @import alabaster.base rhdf5
 save_vector_for_chihaya <- function(handle, name, x, version, scalar) {
     info <- transformVectorForHdf5(x)
-    dhandle <- h5_write_vector(handle, name, info$transformed, scalar=scalar, emit=TRUE)
+
+    dtype <- NULL
+    rtype <- typeof(x)
+    if (rtype == "double") {
+        dtype <- "H5T_NATIVE_DOUBLE"
+    } else if (rtype == "integer") {
+        dtype <- "H5T_NATIVE_INT32"
+    } else if (rtype == "logical") {
+        dtype <- "H5T_NATIVE_INT8"
+    }
+
+    dhandle <- h5_write_vector(handle, name, info$transformed, type=dtype, scalar=scalar, emit=TRUE)
     on.exit(H5Dclose(dhandle), add=TRUE, after=FALSE)
 
     if (!is.null(info$placeholder)) {
-        h5_write_attribute(dhandle, "missing_placeholder", info$placeholder, scalar=TRUE)
+        h5_write_attribute(dhandle, "missing_placeholder", info$placeholder, type=dtype, scalar=TRUE)
     }
-    h5_write_attribute(dhandle, "type", to_value_type(type(x)), scalar=TRUE)
+    h5_write_attribute(dhandle, "type", to_value_type(rtype), scalar=TRUE)
 
     invisible(NULL)
 }
@@ -182,7 +193,12 @@ save_dense_array_for_chihaya <- function(x, handle, name, extract.native, versio
     }
 
     h5_write_vector(ghandle, "native", 0L, type="H5T_NATIVE_INT8", scalar=TRUE)
-    save_names(ghandle, x, group="dimnames", transpose=TRUE)
+
+    dn <- dimnames(x)
+    if (!is.null(dn)) {
+        save_dimnames_for_chihaya(ghandle, rev(dn))
+    }
+
     invisible(NULL)
 }
 
@@ -221,13 +237,13 @@ chihaya_array_registry[["dense array"]] <- function(handle, version, ...) {
     missing.placeholder <- h5_read_attribute(dhandle, "missing_placeholder", check=TRUE, default=NULL)
     data <- h5_cast(data, expected.type=type, missing.placeholder=missing.placeholder)
 
-    if (h5_read_vector(handle, "native") == 1L) {
-        data <- t(data)
+    if (h5_object_exists(handle, "dimnames")) {
+        dn <- load_dimnames_for_chihaya(handle)
+        dimnames(data) <- rev(dn)
     }
 
-    names <- load_names(handle, length(dim(data)), group="dimnames")
-    if (!is.null(names)) {
-        dimnames(data) <- rev(names)
+    if (h5_read_vector(handle, "native") == 1L) {
+        data <- t(data)
     }
 
     data
@@ -258,10 +274,14 @@ save_sparse_matrix_for_chihaya <- function(x, handle, name, version=package_vers
 
     # Better if we didn't save the layout at all, but whatever.
     col <- h5_read_attribute(ghandle, "layout") == "CSC"
-    h5_write_vector(ghandle, "by_column", as.integer(col), type="H5T_NATIVE_INT8")
+    h5_write_vector(ghandle, "by_column", as.integer(col), type="H5T_NATIVE_INT8", scalar=TRUE)
     H5Adelete(ghandle, "layout") 
 
-    save_names(ghandle, x, group="dimnames")
+    dn <- dimnames(x)
+    if (!is.null(dn)) {
+        save_dimnames_for_chihaya(ghandle, dn)
+    }
+
     invisible(NULL)
 }
 
@@ -296,9 +316,9 @@ chihaya_array_registry[["sparse matrix"]] <- function(handle, version, ...) {
     }
 
     dim <- h5_read_vector(handle, "shape")
-    dn <- load_names(handle, 2L, group="dimnames")
-    if (is.null(dn)) {
-        dn <- list(NULL, NULL)
+    dn <- list(NULL, NULL)
+    if (h5_object_exists(handle, "dimnames")) {
+        dn <- load_dimnames_for_chihaya(handle)
     }
 
     transposed <- (h5_read_vector(handle, "by_column") == 0L)
@@ -431,13 +451,14 @@ setMethod("storeDelayedObject", "DelayedNaryIsoOp", function(x, handle, name, ve
     }
 
     if (chosen %in% chihaya.supported.Arith) {
-        h5_write_attribute(ghandle, "delayed_operation", "binary arithmetic", scalar=TRUE)
+        op <- "binary arithmetic"
     } else if (chosen %in% chihaya.supported.Compare) {
-        h5_write_attribute(ghandle, "delayed_operation", "binary comparison", scalar=TRUE)
+        op <- "binary comparison"
     } else if (chosen %in% chihaya.supported.Logic) {
-        h5_write_attribute(ghandle, "delayed_operation", "binary logic", scalar=TRUE)
+        op <- "binary logic"
         chosen <- translate_logic_Ops_for_chihaya(chosen)
     }
+    h5_write_attribute(ghandle, "delayed_operation", op, scalar=TRUE)
     h5_write_vector(ghandle, "method", chosen, scalar=TRUE)
 
     if (length(x@seeds) != 2) {
@@ -470,34 +491,22 @@ chihaya_operation_registry[["binary logic"]] <- function(handle, version, ...) c
 #######################################################
 #######################################################
 
-#' @export
-#' @import rhdf5
-setMethod("storeDelayedObject", "DelayedSetDimnames", function(x, handle, name, version=package_version('1.1'), ...) {
-    ghandle <- H5Gcreate(handle, name)
-    on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
-
-    h5_write_attribute(ghandle, "delayed_type", "operation", scalar=TRUE)
-    h5_write_attribute(ghandle, "delayed_operation", "dimnames", scalar=TRUE)
-
-    dhandle <- H5Gcreate(ghandle, "dimnames")
+#' @import rhdf5 alabaster.base
+save_dimnames_for_chihaya <- function(handle, dimnames) {
+    dhandle <- H5Gcreate(handle, "dimnames")
     on.exit(H5Gclose(dhandle), add=TRUE, after=FALSE)
-    h5_write_attribute(dhandle, "length", length(x@dimnames), type="H5T_NATIVE_UINT32")
+    h5_write_attribute(dhandle, "length", length(dimnames), type="H5T_NATIVE_UINT32", scalar=TRUE)
 
-    for (i in seq_along(x@dimnames)) {
-        dn <- x@dimnames[[i]]
-        if (is.character(dn)) { # avoid -1's.
+    for (i in seq_along(dimnames)) {
+        dn <- dimnames[[i]]
+        if (is.character(dn)) { # avoid NULLs, -1's.
             h5_write_vector(dhandle, as.character(i - 1L), dn)
         }
     }
+}
 
-    storeDelayedObject(x@seed, ghandle, "seed", version=version, ...)
-    invisible(NULL)
-})
-
-#' @import rhdf5 DelayedArray
-chihaya_operation_registry[["dimnames"]] <- function(handle, version, ...) {
-    x <- reloadDelayedObject(handle, "seed", version=version, ...)
-
+#' @import rhdf5 alabaster.base
+load_dimnames_for_chihaya <- function(handle) {
     dhandle <- H5Gopen(handle, "dimnames")
     on.exit(H5Gclose(dhandle), add=TRUE, after=FALSE)
 
@@ -510,7 +519,27 @@ chihaya_operation_registry[["dimnames"]] <- function(handle, version, ...) {
         }
     }
 
-    dimnames(x) <- dnames
+    dnames
+}
+
+#' @export
+#' @import rhdf5
+setMethod("storeDelayedObject", "DelayedSetDimnames", function(x, handle, name, version=package_version('1.1'), ...) {
+    ghandle <- H5Gcreate(handle, name)
+    on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
+
+    h5_write_attribute(ghandle, "delayed_type", "operation", scalar=TRUE)
+    h5_write_attribute(ghandle, "delayed_operation", "dimnames", scalar=TRUE)
+    save_dimnames_for_chihaya(ghandle, x@dimnames)
+
+    storeDelayedObject(x@seed, ghandle, "seed", version=version, ...)
+    invisible(NULL)
+})
+
+#' @import rhdf5 DelayedArray
+chihaya_operation_registry[["dimnames"]] <- function(handle, version, ...) {
+    x <- reloadDelayedObject(handle, "seed", version=version, ...)
+    dimnames(x) <- load_dimnames_for_chihaya(handle)
     x
 }
 
@@ -521,7 +550,7 @@ chihaya_operation_registry[["dimnames"]] <- function(handle, version, ...) {
 save_chihaya_indices <- function(handle, name, indices) { 
     ihandle <- H5Gcreate(handle, name)
     on.exit(H5Gclose(ihandle), add=TRUE, after=FALSE)
-    h5_write_attribute(ihandle, "length", length(indices), type="H5T_NATIVE_UINT32")
+    h5_write_attribute(ihandle, "length", length(indices), type="H5T_NATIVE_UINT32", scalar=TRUE)
 
     for (i in seq_along(indices)) {
         ii <- indices[[i]]
@@ -612,14 +641,14 @@ chihaya.dump.unary.Math <- function(handle, OP) {
                             "digamma", "trigamma")
 
         if (generic %in% direct.support) {
-            h5_write_attribute(handle, "delayed_operation", 'unary math')
+            h5_write_attribute(handle, "delayed_operation", 'unary math', scalar=TRUE)
             h5_write_vector(handle, "method", generic, scalar=TRUE)
             return(TRUE)
         }
 
         log.base.support <- c(log2=2, log10=10)
         if (generic %in% names(log.base.support)) {
-            h5_write_attribute(handle, "delayed_operation", 'unary math')
+            h5_write_attribute(handle, "delayed_operation", 'unary math', scalar=TRUE)
             h5_write_vector(handle, "method", "log", scalar=TRUE)
             h5_write_vector(handle, "base", log.base.support[[generic]], type="H5T_NATIVE_DOUBLE", scalar=TRUE)
             return(TRUE)
@@ -628,7 +657,7 @@ chihaya.dump.unary.Math <- function(handle, OP) {
 
     # Special case for the general case log.
     if (isTRUE(all.equal(as.character(body(OP)), c("log", "a", "base")))) {
-        h5_write_attribute(handle, "delayed_operation", 'unary math')
+        h5_write_attribute(handle, "delayed_operation", 'unary math', scalar=TRUE)
         h5_write_vector(handle, "method", "log", scalar=TRUE)
 
         base <- envir$base
@@ -646,7 +675,7 @@ chihaya.dump.unary.Math2 <- function(handle, OP) {
     generic <- envir$`.Generic`
 
     if (generic %in% getGroupMembers("Math2")) {
-        h5_write_attribute(handle, "delayed_operation", 'unary math')
+        h5_write_attribute(handle, "delayed_operation", 'unary math', scalar=TRUE)
         h5_write_vector(handle, "method", generic, scalar=TRUE)
         h5_write_vector(handle, "digits", envir$digits, type="H5T_NATIVE_INT32", scalar=TRUE)
         return(TRUE)
@@ -682,13 +711,13 @@ chihaya.dump.unary.Ops <- function(handle, OP) {
         if (!generic %in% c("+", "-")) {
             stop("second argument can only be missing for unary '+' or '-'")
         }
-        h5_write_vector(handle, "side", "none")
+        h5_write_vector(handle, "side", "none", scalar=TRUE)
 
     } else {
         right <- is(e1, "DelayedArray") # i.e., is the operation applied to the left of the seed?
         left <- is(e2, "DelayedArray") # i.e., is the operation applied to the left of the seed?
 
-        h5_write_vector(handle, "side", if (left) "left" else "right")
+        h5_write_vector(handle, "side", if (left) "left" else "right", scalar=TRUE)
         val <- if (left) e1 else e2
         if (length(val) == 1) {
             save_vector_for_chihaya(handle, "value", val, version=version, scalar=TRUE)
@@ -733,7 +762,7 @@ save_iso_op_stack <- function(handle, name, OPS, i, seed, version, ...) {
     OP <- OPS[[i]]
     ghandle <- H5Gcreate(handle, name)
     on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
-    h5_write_attribute(ghandle, "delayed_type", 'operation')
+    h5_write_attribute(ghandle, "delayed_type", 'operation', scalar=TRUE)
 
     if (chihaya.dump.unary.Math(ghandle, OP)) {
         return(save_iso_op_stack(ghandle, "seed", OPS, i - 1L, seed=seed, version=version, ...))
@@ -765,7 +794,7 @@ setMethod("storeDelayedObject", "DelayedUnaryIsoOpStack", function(x, handle, na
 setMethod("storeDelayedObject", "DelayedUnaryIsoOpWithArgs", function(x, handle, name, version=package_version("1.1"), ...) {
     ghandle <- H5Gcreate(handle, name)
     on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
-    h5_write_attribute(ghandle, "delayed_type", 'operation')
+    h5_write_attribute(ghandle, "delayed_type", 'operation', scalar=TRUE)
 
     # Figuring out the identity of the operation.
     chosen <- NULL
@@ -779,15 +808,17 @@ setMethod("storeDelayedObject", "DelayedUnaryIsoOpWithArgs", function(x, handle,
         stop("unknown operation in ", class(x))
     }
 
+    op <- NULL
     if (chosen %in% chihaya.supported.Logic) {
-        h5_write_attribute(ghandle, "delayed_operation", 'unary logic')
+        op <- "unary logic"
         chosen <- translate_logic_Ops_for_chihaya(chosen)
     } else if (chosen %in% chihaya.supported.Compare) {
-        h5_write_attribute(ghandle, "delayed_operation", 'unary comparison')
+        op <- "unary comparison"
     } else if (chosen %in% chihaya.supported.Arith) {
-        h5_write_attribute(ghandle, "delayed_operation", 'unary arithmetic')
+        op <- "unary arithmetic"
     }
-    h5_write_vector(ghandle, "method", chosen)
+    h5_write_attribute(ghandle, "delayed_operation", op, scalar=TRUE)
+    h5_write_vector(ghandle, "method", chosen, scalar=TRUE)
 
     # Saving the left and right args. There should only be one or the other.
     # as the presence of both is not commutative.
@@ -952,9 +983,9 @@ setMethod("storeDelayedObject", "ANY", function(x, handle, name, version=package
         h5_write_attribute(ghandle, "delayed_operation", "matrix product", scalar=TRUE)
 
         storeDelayedObject(x@rotation, ghandle, "left_seed", version=version, ...)
-        h5_write_vector(ghandle, "left_orientation", "N")
+        h5_write_vector(ghandle, "left_orientation", "N", scalar=TRUE)
         storeDelayedObject(x@components, ghandle, "right_seed", version=version, ...)
-        h5_write_vector(ghandle, "right_orientation", "T")
+        h5_write_vector(ghandle, "right_orientation", "T", scalar=TRUE)
 
     } else if (is(x, "ResidualMatrixSeed")) {
         h5_write_attribute(ghandle, "delayed_type", "operation", scalar=TRUE)
