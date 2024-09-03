@@ -252,7 +252,7 @@ registerReloadDelayedObjectFunction <- function(type=c("operation", "array"), su
 
 #' @export
 #' @import rhdf5
-setMethod("storeDelayedObject", "ConstantArraySeed", function(x, handle, name, version=package_version("1.1"), known.seeds=list(), ...) {
+setMethod("storeDelayedObject", "ConstantArraySeed", function(x, handle, name, version=package_version("1.1"), ...) {
     ghandle <- H5Gcreate(handle, name)
     on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
 
