@@ -151,14 +151,19 @@ This instructs \code{storeDelayedObject} to save everything as external seeds, i
 Doing so can be beneficial to enable deduplication, e.g., when two delayed arrays perform different operations on the same underlying seed.
 By saving the seeds externally, file management systems can identify the redundancy to save storage space.
 
-Advanced users can explicitly deduplicate by setting \code{save.external.array=TRUE} and passing \code{external.dedup.session=} to \code{storeDelayedObject}.
-The \code{external.dedup.session} object is filled up with unique seeds as \code{storeDelayedObject} is called on various DelayedArrays, e.g., as different assays of a SummarizedExperiment.
+Advanced users can explicitly deduplicate external seeds by setting \code{save.external.array=TRUE} and passing \code{external.dedup.session=} to \code{storeDelayedObject}.
+The \code{external.dedup.session} object is filled up with unique seeds as \code{storeDelayedObject} is called on various DelayedArrays.
 Whenever a duplicate seed is encountered, it is not saved again, but is instead linked or copied from the file path associated with the identical external seed.
+For example, a new session can be created when saving a SummarizedExperiment to deduplicate seeds across its assays.
 
 The exact deduplication action can be specified by specifying the \code{external.dedup.action=} parameter.
 By default, \code{storeDelayedObject} attempts to create hard links, falling back to copies when a link cannot be created.
 Users can instead create copies, symbolic links to absolute paths, or even symbolic links to relative paths
 (e.g., to link to a \dQuote{neighboring} assay of the same SummarizedExperiment).
+
+When external seeds are encountered by \code{reloadDelayedObject}, they are loaded as \linkS4class{ReloadedArray}s (or some variant thereof) by \code{\link{altReadObject}}.
+Users can forcibly realize the reloaded seed into memory by passing \code{custom.takane.reload=TRUE} in \code{...} for the \code{reloadDelayedObject} call.
+This is occasionally helpful for providing a more faithful roundtrip from file back into memory.
 }
 
 \examples{
