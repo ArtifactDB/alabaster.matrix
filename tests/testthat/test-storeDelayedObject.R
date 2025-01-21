@@ -6,7 +6,7 @@ library(rhdf5)
 
 saveDelayed <- function(x, ...) {
     tmp <- tempfile()
-    saveObject(x, tmp, DelayedArray.dispatch.pristine=FALSE, DelayedArray.preserve.ops=TRUE, DelayedArray.store.args=list(...))
+    saveObject(x, tmp, DelayedArray.dispatch.pristine=FALSE, DelayedArray.preserve.ops=TRUE, ...)
     stopifnot(readObjectFile(tmp)$type == "delayed_array")
     tmp
 }
@@ -134,13 +134,13 @@ test_that("dense array saving handles a bit of transposition", {
 
 test_that("dense arrays are saved to external arrays if requested", {
     X <- DelayedArray(matrix(rpois(60, 5), ncol=20))
-    temp <- saveDelayed(X, save.external.array=TRUE)
+    temp <- saveDelayed(X, DelayedArray.force.external=TRUE)
     expect_true(file.exists(file.path(temp, "seeds", 0)))
     roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
     expect_identical(X, roundtrip)
 
     X <- DelayedArray(Matrix::Matrix(runif(60), ncol=20))
-    temp <- saveDelayed(X, save.external.array=TRUE)
+    temp <- saveDelayed(X, DelayedArray.force.external=TRUE)
     expect_true(file.exists(file.path(temp, "seeds", 0)))
     roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
     expect_identical(unname(as.array(X)), as.array(roundtrip@seed))
@@ -189,7 +189,7 @@ test_that("sparse matrix saving handles dimnames", {
 test_that("sparse matrices are saved to external arrays if requested", {
     X <- matrix(rpois(200, 1) - 1L, ncol=20)
     X <- as(X, "SVT_SparseMatrix")
-    temp <- saveDelayed(DelayedArray(X), save.external.array=TRUE)
+    temp <- saveDelayed(DelayedArray(X), DelayedArray.force.external=TRUE)
     expect_true(file.exists(file.path(temp, "seeds", 0)))
 
     roundtrip <- loadDelayed(temp)
@@ -789,34 +789,27 @@ test_that("external saving avoids over-nesting of ReloadedArraySeed objects", {
 })
 
 test_that("external deduplication is done correctly", {
-    dedup.session <- createExternalSeedDedupSession()
+    dedup.session <- createDedupSession()
 
     X <- DelayedArray(matrix(rpois(60, 5), ncol=20))
-    temp <- saveDelayed(X, save.external.array=TRUE, external.dedup.session=dedup.session)
+    temp <- saveDelayed(X, DelayedArray.force.external=TRUE, array.dedup.session=dedup.session)
     expect_true(file.exists(file.path(temp, "seeds", 0)))
     roundtrip <- loadDelayed(temp, custom.takane.realize=TRUE)
     expect_identical(X, roundtrip)
 
     Y <- X + 1
-    temp2a <- saveDelayed(Y, save.external.array=TRUE, external.dedup.session=dedup.session, external.dedup.action="link")
+    temp2a <- saveDelayed(Y, DelayedArray.force.external=TRUE, array.dedup.session=dedup.session, array.dedup.action="link")
     expect_true(file.exists(file.path(temp2a, "seeds", 0)))
     roundtrip <- loadDelayed(temp2a, custom.takane.realize=TRUE)
     expect_equal(Y, roundtrip)
 
-    if (.Platform$OS.type=="unix") { 
-        temp2b <- saveDelayed(Y, save.external.array=TRUE, external.dedup.session=dedup.session, external.dedup.action="symlink")
-        expect_true(file.exists(file.path(temp2b, "seeds", 0)))
-        roundtrip <- loadDelayed(temp2b, custom.takane.realize=TRUE)
-        expect_equal(Y, roundtrip)
-    }
-
-    temp2c <- saveDelayed(Y, save.external.array=TRUE, external.dedup.session=dedup.session, external.dedup.action="copy")
-    expect_true(file.exists(file.path(temp2c, "seeds", 0)))
-    roundtrip <- loadDelayed(temp2c, custom.takane.realize=TRUE)
+    temp2b <- saveDelayed(Y, DelayedArray.force.external=TRUE, array.dedup.session=dedup.session, array.dedup.action="copy")
+    expect_true(file.exists(file.path(temp2b, "seeds", 0)))
+    roundtrip <- loadDelayed(temp2b, custom.takane.realize=TRUE)
     expect_equal(Y, roundtrip)
 
     Z <- DelayedArray(matrix(rpois(30, 5), ncol=5)) # checking that a different array doesn't trigger the deduplicator.
-    temp3 <- saveDelayed(Z, save.external.array=TRUE, external.dedup.session=dedup.session)
+    temp3 <- saveDelayed(Z, DelayedArray.force.external=TRUE, array.dedup.session=dedup.session)
     expect_true(file.exists(file.path(temp3, "seeds", 0)))
     roundtrip <- loadDelayed(temp3, custom.takane.realize=TRUE)
     expect_identical(Z, roundtrip)
@@ -824,37 +817,32 @@ test_that("external deduplication is done correctly", {
     if (.Platform$OS.type=="unix") { 
         expect_identical(Sys.readlink(file.path(temp, "seeds", "0", "OBJECT")), "")
         expect_identical(Sys.readlink(file.path(temp2a, "seeds", "0", "OBJECT")), "")
-        expect_true(startsWith(Sys.readlink(file.path(temp2b, "seeds", "0", "OBJECT")), "/"))
-        expect_identical(Sys.readlink(file.path(temp2c, "seeds", "0", "OBJECT")), "")
+        expect_identical(Sys.readlink(file.path(temp2b, "seeds", "0", "OBJECT")), "")
         expect_identical(Sys.readlink(file.path(temp3, "seeds", "0", "OBJECT")), "")
+
+        temp2c <- saveDelayed(Y, DelayedArray.force.external=TRUE, array.dedup.session=dedup.session, array.dedup.action="symlink")
+        expect_true(file.exists(file.path(temp2c, "seeds", 0)))
+        expect_true(startsWith(Sys.readlink(file.path(temp2c, "seeds", "0", "OBJECT")), "/"))
+        roundtrip <- loadDelayed(temp2c, custom.takane.realize=TRUE)
+        expect_equal(Y, roundtrip)
+
+        temp2d <- saveDelayed(Y, DelayedArray.force.external=TRUE, array.dedup.session=dedup.session, array.dedup.action="relsymlink")
+        expect_true(file.exists(file.path(temp2d, "seeds", 0)))
+        expect_true(startsWith(Sys.readlink(file.path(temp2d, "seeds", "0", "OBJECT")), "../"))
+        roundtrip <- loadDelayed(temp2d, custom.takane.realize=TRUE)
+        expect_equal(Y, roundtrip)
+
+        # Back-compatibility check.
+        temp2e <- saveDelayed(Y, DelayedArray.store.args=list(save.external.array=TRUE, external.dedup.session=dedup.session, external.dedup.action="symlink"))
+        expect_true(file.exists(file.path(temp2e, "seeds", 0)))
+        expect_true(startsWith(Sys.readlink(file.path(temp2e, "seeds", "0", "OBJECT")), "/"))
+        roundtrip <- loadDelayed(temp2e, custom.takane.realize=TRUE)
+        expect_equal(Y, roundtrip)
+
+        temp3b <- saveDelayed(Z, DelayedArray.force.external=TRUE, array.dedup.session=dedup.session, array.dedup.action="symlink")
+        expect_true(file.exists(file.path(temp3b, "seeds", 0)))
+        expect_true(startsWith(Sys.readlink(file.path(temp3b, "seeds", "0", "OBJECT")), "/"))
+        roundtrip <- loadDelayed(temp3b, custom.takane.realize=TRUE)
+        expect_equal(Z, roundtrip)
     }
-})
-
-test_that("external deduplication works with relative paths", {
-    skip_on_os("windows")
-    dedup.session <- createExternalSeedDedupSession()
-
-    staging <- tempfile()
-    dir.create(staging)
-    pwd <- getwd()
-    on.exit(setwd(pwd), after=FALSE, add=TRUE)
-    setwd(staging)
-
-    X <- DelayedArray(matrix(rpois(60, 5), ncol=20))
-    dir.create("original")
-    saveObject(X + 2, file.path("original", "out"), DelayedArray.preserve.ops=TRUE, 
-        DelayedArray.store.args=list(save.external.array=TRUE, external.dedup.session=dedup.session, external.dedup.action="relsymlink"))
-
-    Y <- X + 1
-    saveObject(Y, "semiclone", DelayedArray.preserve.ops=TRUE, 
-        DelayedArray.store.args=list(save.external.array=TRUE, external.dedup.session=dedup.session, external.dedup.action="relsymlink"))
-
-    # Changing back and seeing whether the loader works.
-    setwd(pwd)
-    expect_true(file.exists(file.path(staging, "semiclone", "seeds", 0)))
-    roundtrip <- loadDelayed(file.path(staging, "semiclone"), custom.takane.realize=TRUE)
-    expect_equal(Y, roundtrip)
-
-    expect_identical(Sys.readlink(file.path(staging, "original", "out", "seeds", "0", "OBJECT")), "")
-    expect_true(startsWith(Sys.readlink(file.path(staging, "semiclone", "seeds", "0", "OBJECT")), "../"))
 })

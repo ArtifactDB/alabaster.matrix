@@ -19,19 +19,9 @@
 #'
 #' One obvious optimization is the specialization of \code{\link{saveObject}} on ReloadedArray instances.
 #' Instead of loading the array data back into the R session and saving it again, the \code{saveObject} method can just link or copy the existing files.
-#' This behavior is controlled by the optional \code{ReloadedArray.reuse.files} option in the \code{saveObject} method, which can be one of:
-#' \itemize{
-#' \item \code{"copy"}: copy the files from the original directory (as stored in the ReloadedArray object) to the new \code{path} specified in \code{saveObject}.
-#' \item \code{"link"}: create a hard link from the files in the original directory to the new \code{path}.
-#' If this fails, we silently fall back to a copy.
-#' This mode is the default approach.
-#' \item \code{"symlink"}: create a symbolic link from the files in the original directory to the new \code{path}.
-#' Each symbolic link refers to an absolute path in the original directory, which is useful when the contents of \code{path} might be moved (but the original directory will not).
-#' \item \code{"relsymlink"}: create a symbolic link from the files in the original directory to the new \code{path}.
-#' Each symbolic link refers to an relative path to its corresponding file in the original directory,
-#' which is useful when both \code{path} and the original directory are moved together, e.g., as they are part of the same parent object like a SummarizedExperiment.
-#' \item \code{"none"}: ignore existing files and just save the contents by calling \code{"\link{saveObject,DelayedArray-method}"}.
-#' }
+#' This behavior is controlled by the \code{ReloadedArray.reuse.files=} option in the \code{saveObject} method,
+#' which can be any of the choices for \code{action=} in \code{\link[alabaster.base]{cloneDirectory}}.
+#' It may also be \code{"none"} to ignore existing files and just save the contents by calling \code{"\link{saveObject,DelayedArray-method}"}.
 #' 
 #' @examples
 #' arr <- array(rpois(10000, 10), c(50, 20, 10))
@@ -94,13 +84,11 @@ setMethod("path", "ReloadedArraySeed", function(object, ...) object@path)
 
 #' @export
 setMethod("saveObject", "ReloadedArray", function(x, path, ReloadedArray.reuse.files="link", ...) {
-    ReloadedArray.reuse.files <- match.arg(ReloadedArray.reuse.files, c("none", "copy", "link", "symlink", "relsymlink"))
     s <- x@seed
     if (ReloadedArray.reuse.files == "none") {
         x <- DelayedArray(s@seed)
         return(saveObject(x, path, ReloadedArray.reuse.files=ReloadedArray.reuse.files, ...))
     } 
-
-    clone_duplicate(s@path, path, action=ReloadedArray.reuse.files)
+    cloneDirectory(s@path, path, action=ReloadedArray.reuse.files)
     invisible(NULL)
 })

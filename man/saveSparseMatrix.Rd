@@ -6,14 +6,28 @@
 \alias{saveObject,SVT_SparseMatrix-method}
 \title{Save a sparse matrix to disk}
 \usage{
-\S4method{saveObject}{sparseMatrix}(x, path, ...)
+\S4method{saveObject}{sparseMatrix}(
+  x,
+  path,
+  array.dedup.session = NULL,
+  array.dedup.action = "link",
+  ...
+)
 
-\S4method{saveObject}{SVT_SparseMatrix}(x, path, ...)
+\S4method{saveObject}{SVT_SparseMatrix}(
+  x,
+  path,
+  array.dedup.session = NULL,
+  array.dedup.action = "link",
+  ...
+)
 }
 \arguments{
 \item{x}{A sparse matrix of some kind, typically from either the \pkg{Matrix} or \pkg{SparseArray} packages.}
 
 \item{path}{String containing the path to a directory in which to save \code{x}.}
+
+\item{array.dedup.session, array.dedup.action}{Arguments controlling deduplication of \code{x}, see \code{?"\link{saveObject,array-method}"} for details.}
 
 \item{...}{Further arguments, currently ignored.}
 }

@@ -5,8 +5,19 @@
 #' @param x An integer, numeric, logical or character array.
 #' Alternatively, any of the \linkS4class{denseMatrix} subclasses from the \pkg{Matrix} package.
 #' @param path String containing the path to a directory in which to save \code{x}.
+#' @param array.dedup.session A session object created by \code{\link[alabaster.base]{createDedupSession}},
+#' specifying which objects should be deduplicated if the same \code{x} is encountered multiple times.
+#' @param array.dedup.action String specifying how deduplication should occur, see options for the \code{action=} argument in \code{\link[alabaster.base]{cloneDirectory}}.
 #' @param ... Further arguments, currently ignored.
 #' 
+#' @details
+#' When \code{saveObject} is called multiple times on the same \code{x}, this method can avoid re-saving the array if a user supplies a deduplication session in \code{array.dedup.session=}.
+#' Instead, the method will link or copy (depending on the choice of \code{array.dedup.action=}) the files produced by the first \code{saveObject} call to the new \code{path=}.
+#' This saves time and reduces disk usage, and is particularly useful when saving complex data structures like a SummarizedExperiment.
+#' For example, if we have a SummarizedExperiment that contains multiple copies of the same array, we can pass a \code{array.dedup.session=} to the \code{saveObject} call on the SummarizedExperiment.
+#' This will instruct the internal \code{saveObject} calls to only write the array to disk once and subsequently make copies or links for all duplicates of that array.
+#' The same approach can be applied to deduplicate seeds in a DelayedArray, see \code{?"\link{storeDelayedObject}"} for details.
+#'
 #' @return
 #' \code{x} is saved to \code{path} and \code{NULL} is invisibly returned.
 #'
@@ -33,7 +44,16 @@
 NULL
 
 #' @import alabaster.base rhdf5
-.save_array <- function(x, path, extract.native=NULL, ...) {
+.save_array <- function(x, path, extract.native=NULL, array.dedup.session=NULL, array.dedup.action="link", ...) {
+    if (!is.null(array.dedup.session)) {
+        dedup.path <- checkObjectInDedupSession(x, array.dedup.session)
+        if (!is.null(dedup.path)) {
+            cloneDirectory(dedup.path, path, array.dedup.action)
+            return(invisible(NULL))
+        }
+        addObjectToDedupSession(x, array.dedup.session, path)
+    }
+
     dir.create(path)
     fpath <- file.path(path, "array.h5")
     name <- "dense_array"
@@ -70,16 +90,18 @@ NULL
 
 #' @export
 #' @rdname saveArray
-setMethod("saveObject", "array", function(x, path, ...) .save_array(x, path, extract.native=identity, ...))
+setMethod("saveObject", "array", function(x, path, array.dedup.session=NULL, array.dedup.action="link", ...) {
+    .save_array(x, path, extract.native=identity, array.dedup.session=array.dedup.session, array.dedup.action=array.dedup.action, ...)
+})
 
 #' @export
 #' @rdname saveArray
-setMethod("saveObject", "denseMatrix", function(x, path, ...) {
+setMethod("saveObject", "denseMatrix", function(x, path, array.dedup.session=NULL, array.dedup.action="link", ...) {
     extract.native <- NULL
     if (is(x, "dMatrix") || is(x, "lMatrix")) {
         extract.native <- function(y) y@x
     }
-    .save_array(x, path, extract.native=extract.native, ...)
+    .save_array(x, path, extract.native=extract.native, array.dedup.session=array.dedup.session, array.dedup.action=array.dedup.action, ...)
 })
 
 ##############################

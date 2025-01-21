@@ -12,7 +12,10 @@
   path,
   DelayedArray.dispatch.pristine = TRUE,
   DelayedArray.preserve.ops = FALSE,
+  DelayedArray.force.external = FALSE,
   DelayedArray.store.args = list(),
+  array.dedup.session = NULL,
+  array.dedup.action = NULL,
   ...
 )
 }
@@ -25,15 +28,28 @@
 
 \item{DelayedArray.preserve.ops}{Logical scalar indicating whether delayed operations should be preserved on-disk.}
 
-\item{DelayedArray.store.args}{Named arguments to pass to \code{\link{storeDelayedObject}}.}
+\item{DelayedArray.force.external}{Logical scalar indicating to save the seeds of \code{x} as external arrays.
+This is passed directly to \code{storeDelayedObject} as the \code{save.external.array=} argument, see \code{?\link{storeDelayedObject}} for details.}
 
-\item{...}{Further arguments, ignored.}
+\item{DelayedArray.store.args}{More named arguments to pass to \code{\link{storeDelayedObject}}.}
+
+\item{array.dedup.session, array.dedup.action}{Arguments controlling deduplication of \code{x}, see \code{?"\link{saveObject,array-method}"} for details.
+If \code{x} is not a duplicate of an existing object, these arguments will be passed to further methods as described for \code{...}.}
+
+\item{...}{Further arguments passed to \code{storeDelayedObject} as \code{external.save.args}, if the delayed operations are to be preserved;
+otherwise, they are passed to \code{\link{saveObject,array-method}} or \code{\link{saveObject,sparseMatrix-method}}.}
 }
 \value{
 \code{x} is saved to \code{path} and \code{NULL} is invisibly returned.
 }
 \description{
 Save \link{DelayedArray} objects to their on-disk representation.
+}
+\details{
+Supplying \code{array.dedup.session=} by itself is only guaranteed to deduplicate \code{x} itself and may not deduplicate its seeds.
+Users should combine this with \code{DelayedArray.force.external=TRUE} to force seeds to be saved via \code{saveObject},
+which exposes the seeds to the deduplication machinery in their respective \code{saveObject} methods.
+Check out \code{?"\link{storeDelayedObject}"} for more details.
 }
 \examples{
 mat <- Matrix::rsparsematrix(100, 200, density=0.2)

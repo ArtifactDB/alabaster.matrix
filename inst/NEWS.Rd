@@ -4,6 +4,12 @@
 
 \section{Version 1.8.0}{\itemize{
 \item Deprecated the WrapperArraySeed in favor of direct inheritance from DelayedUnaryIsoOp.
+
+\item Support deduplication of arrays and sparse matrices via the new \code{array.dedup.session=} argument in their corresponding \code{saveObject()} methods.
+This also allows deduplication of external DelayedArray seeds if they have already been processed outside a DelayedArray in the same session.
+
+\item Added a \code{DelayedArray.force.external=} argument to the \code{saveObject()} method for DelayedArrays.
+This is a more convenient way of forcing seeds to be saved as external arrays for deduplication.
 }}
 
 \section{Version 1.6.0}{\itemize{

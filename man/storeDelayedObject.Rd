@@ -16,6 +16,7 @@
 \alias{storeDelayedObject,array-method}
 \alias{storeDelayedObject,denseMatrix-method}
 \alias{storeDelayedObject,sparseMatrix-method}
+\alias{createExternalSeedDedupSession}
 \alias{reloadDelayedObject}
 \alias{reloadDelayedObjectFunctionRegistry}
 \alias{registerReloadDelayedObjectFunction}
@@ -23,7 +24,6 @@
 \alias{altStoreDelayedObject}
 \alias{altReloadDelayedObjectFunction}
 \alias{altReloadDelayedObject}
-\alias{createExternalSeedDedupSession}
 \title{Store/reload a DelayedArray}
 \usage{
 storeDelayedObject(x, handle, name, ...)
@@ -55,7 +55,7 @@ registerReloadDelayedObjectFunction(
   version = package_version("1.1"),
   external.save.args = list(),
   external.dedup.session = NULL,
-  external.dedup.action = c("link", "copy", "symlink", "relsymlink"),
+  external.dedup.action = NULL,
   ...
 )
 
@@ -66,8 +66,6 @@ altStoreDelayedObject(...)
 altReloadDelayedObjectFunction(reload)
 
 altReloadDelayedObject(...)
-
-createExternalSeedDedupSession()
 }
 \arguments{
 \item{x}{Any of the delayed operation/array classes from \pkg{DelayedArray}.}
@@ -101,9 +99,9 @@ even if a dedicated \code{storeDelayedObject} method is available.}
 
 \item{external.save.args}{Named list of further arguments to pass to \code{\link{altSaveObject}} when saving an external seed.}
 
-\item{external.dedup.session}{Session object created by \code{createExternalSeedDedupSession}.}
+\item{external.dedup.session}{Deprecated, set \code{external.save.args$array.dedup.session} instead.}
 
-\item{external.dedup.action}{String specifying the deduplication method to use.}
+\item{external.dedup.action}{Deprecated, set \code{external.save.args$array.dedup.action} instead.}
 
 \item{store}{Function (typically a generic) to store delayed objects to file.
 This should accept the same arguments as \code{storeDelayedObject}.}
@@ -132,7 +130,8 @@ Methods should save the contents of the delayed object to the HDF5 file in the \
 Each new store method typically requires a corresponding reloading function to be registered via \code{registerReloadDelayedObjectFunction},
 so that \code{reloadDelayedObject} knows how to reconstitute the object from file.
 
-Application developers can customize the process of storing/reloading delayed objects by specifying alternative functions in \code{altReloadDelayedObjectFunction} and \code{altStoreDelayedObjectFunction}.
+Application developers can customize the process of storing/reloading delayed objects
+by specifying alternative functions in \code{altReloadDelayedObjectFunction} and \code{altStoreDelayedObjectFunction}.
 For example, if we want to preserve all delayed objects except for \linkS4class{DelayedSubset},
 we could replace \code{storeDelayedObject} with an \code{altStoreDelayedObject} that realizes any DelayedSubset instance into an ordinary matrix.
 This is analogous to the overrides for \code{\link{altReadObject}} and \code{\link{altSaveObject}}.
@@ -144,25 +143,20 @@ This ensures that any custom overrides specified by application developers are s
 
 \section{External seeds}{
 
-Whenever \code{storeDelayedObject} encounters a delayed operation or array-like seed for which it has no methods,
+Whenever \code{\link{storeDelayedObject}} encounters a delayed operation or array-like seed for which it has no methods,
 the ANY method will save the delayed object as an \dQuote{external seed}.
 The array is saved via \code{\link{altSaveObject}} into a \code{seeds} directory next to the file associated with \code{handle}.
 A reference to this external location is then stored in the \code{name} group inside \code{handle}.
 
-Users can force this behavior for all array-like seeds by passing \code{save.external.array=TRUE} in the \code{...} arguments of \code{storeDelayedObject}.
+Users can force this behavior for all array-like seeds by specifying \code{save.external.array=TRUE}.
 This instructs \code{storeDelayedObject} to save everything as external seeds, including those arrays for which it has methods.
 Doing so can be beneficial to enable deduplication, e.g., when two delayed arrays perform different operations on the same underlying seed.
 By saving the seeds externally, file management systems can identify the redundancy to save storage space.
 
-Advanced users can explicitly deduplicate external seeds by setting \code{save.external.array=TRUE} and passing \code{external.dedup.session=} to \code{storeDelayedObject}.
-The \code{external.dedup.session} object is filled up with unique seeds as \code{storeDelayedObject} is called on various DelayedArrays.
+Advanced users can explicitly deduplicate external seeds by setting both \code{save.external.array=TRUE} and supplying \code{array.dedup.session=} in \code{external.save.args=}.
+The \code{array.dedup.session} object is filled up with unique seeds as \code{storeDelayedObject} is called on various DelayedArrays (see \code{?"\link{saveObject,array-method}"} for details).
 Whenever a duplicate seed is encountered, it is not saved again, but is instead linked or copied from the file path associated with the identical external seed.
 For example, a new session can be created when saving a SummarizedExperiment to deduplicate seeds across its assays.
-
-The exact deduplication action can be specified by specifying the \code{external.dedup.action=} parameter.
-By default, \code{storeDelayedObject} attempts to create hard links, falling back to copies when a link cannot be created.
-Users can instead create copies, symbolic links to absolute paths, or even symbolic links to relative paths
-(e.g., to link to a \dQuote{neighboring} assay of the same SummarizedExperiment).
 
 When external seeds are encountered by \code{reloadDelayedObject}, they are loaded as \linkS4class{ReloadedArray}s (or some variant thereof) by \code{\link{altReadObject}}.
 Users can forcibly realize the reloaded seed into memory by passing \code{custom.takane.reload=TRUE} in \code{...} for the \code{reloadDelayedObject} call.

@@ -8,15 +8,32 @@
 \alias{saveObject,denseMatrix-method}
 \title{Save a multi-dimensional array to disk}
 \usage{
-\S4method{saveObject}{array}(x, path, ...)
+\S4method{saveObject}{array}(
+  x,
+  path,
+  array.dedup.session = NULL,
+  array.dedup.action = "link",
+  ...
+)
 
-\S4method{saveObject}{denseMatrix}(x, path, ...)
+\S4method{saveObject}{denseMatrix}(
+  x,
+  path,
+  array.dedup.session = NULL,
+  array.dedup.action = "link",
+  ...
+)
 }
 \arguments{
 \item{x}{An integer, numeric, logical or character array.
 Alternatively, any of the \linkS4class{denseMatrix} subclasses from the \pkg{Matrix} package.}
 
 \item{path}{String containing the path to a directory in which to save \code{x}.}
+
+\item{array.dedup.session}{A session object created by \code{\link[alabaster.base]{createDedupSession}},
+specifying which objects should be deduplicated if the same \code{x} is encountered multiple times.}
+
+\item{array.dedup.action}{String specifying how deduplication should occur, see options for the \code{action=} argument in \code{\link[alabaster.base]{cloneDirectory}}.}
 
 \item{...}{Further arguments, currently ignored.}
 }
@@ -25,6 +42,14 @@ Alternatively, any of the \linkS4class{denseMatrix} subclasses from the \pkg{Mat
 }
 \description{
 Save a high-dimensional array to its on-disk representations.
+}
+\details{
+When \code{saveObject} is called multiple times on the same \code{x}, this method can avoid re-saving the array if a user supplies a deduplication session in \code{array.dedup.session=}.
+Instead, the method will link or copy (depending on the choice of \code{array.dedup.action=}) the files produced by the first \code{saveObject} call to the new \code{path=}.
+This saves time and reduces disk usage, and is particularly useful when saving complex data structures like a SummarizedExperiment.
+For example, if we have a SummarizedExperiment that contains multiple copies of the same array, we can pass a \code{array.dedup.session=} to the \code{saveObject} call on the SummarizedExperiment.
+This will instruct the internal \code{saveObject} calls to only write the array to disk once and subsequently make copies or links for all duplicates of that array.
+The same approach can be applied to deduplicate seeds in a DelayedArray, see \code{?"\link{storeDelayedObject}"} for details.
 }
 \examples{
 mat <- array(rpois(10000, 10), c(50, 20, 10))

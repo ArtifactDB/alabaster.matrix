@@ -361,3 +361,45 @@ test_that("reading sparse arrays work with non-default NA placeholders", {
     ref[ref==first] <- NA
     expect_identical(ref, as.matrix(arr2))
 })
+
+test_that("saveObject deduplicates sparse arrays correctly", {
+    mat <- rsparsematrix(100, 20, 0.5)
+    tmp <- tempfile()
+    session <- createDedupSession()
+
+    saveObject(mat, tmp, array.dedup.session=session, array.dedup.action="symlink")
+    expect_identical(as.matrix(readObject(tmp)), as.matrix(mat))
+
+    tmp2 <- tempfile()
+    saveObject(mat, tmp2, array.dedup.session=session, array.dedup.action="symlink")
+    expect_identical(as.matrix(readObject(tmp2)), as.matrix(mat))
+
+    # Check that a symlink is actually formed.
+    if (.Platform$OS.type != "windows") {
+        expect_true(Sys.readlink(file.path(tmp2, "OBJECT")) != "")
+    }
+
+    # Check that we get the same result from a pristine DelayedArray.
+    tmp3 <- tempfile()
+    saveObject(DelayedArray(mat), tmp3, array.dedup.session=session, array.dedup.action="symlink")
+    expect_identical(as.matrix(readObject(tmp3)), as.matrix(mat))
+    if (.Platform$OS.type != "windows") {
+        expect_true(Sys.readlink(file.path(tmp3, "OBJECT")) != "")
+    }
+
+    # Deduplication works for DelayedArrays wrapping dense matrices.
+    tmp4a <- tempfile()
+    delayed <- DelayedArray(mat) * 2
+    saveObject(delayed, tmp4a, array.dedup.session=session, array.dedup.action="symlink")
+    expect_identical(as.matrix(readObject(tmp4a)), unname(as.matrix(delayed)))
+    if (.Platform$OS.type != "windows") {
+        expect_true(Sys.readlink(file.path(tmp4a, "OBJECT")) == "")
+    }
+
+    tmp4b <- tempfile()
+    saveObject(delayed, tmp4b, DelayedArray.dispatch.pristine=FALSE, array.dedup.session=session, array.dedup.action="symlink")
+    expect_identical(as.matrix(readObject(tmp4b)), unname(as.matrix(delayed)))
+    if (.Platform$OS.type != "windows") {
+        expect_true(Sys.readlink(file.path(tmp4b, "OBJECT")) != "")
+    }
+})

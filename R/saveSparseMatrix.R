@@ -4,6 +4,7 @@
 #'
 #' @param x A sparse matrix of some kind, typically from either the \pkg{Matrix} or \pkg{SparseArray} packages.
 #' @param path String containing the path to a directory in which to save \code{x}.
+#' @param array.dedup.session,array.dedup.action Arguments controlling deduplication of \code{x}, see \code{?"\link{saveObject,array-method}"} for details.
 #' @param ... Further arguments, currently ignored.
 #' 
 #' @return
@@ -24,7 +25,16 @@
 #' @name saveSparseMatrix
 NULL
 
-.save_compressed_sparse_matrix <- function(x, path, ...) {
+.save_compressed_sparse_matrix <- function(x, path, array.dedup.session=NULL, array.dedup.action="link", ...) {
+    if (!is.null(array.dedup.session)) {
+        dedup.path <- checkObjectInDedupSession(x, array.dedup.session)
+        if (!is.null(dedup.path)) {
+            cloneDirectory(dedup.path, path, array.dedup.action)
+            return(invisible(NULL))
+        }
+        addObjectToDedupSession(x, array.dedup.session, path)
+    }
+
     dir.create(path)
     fpath <- file.path(path, "matrix.h5")
     name <- "compressed_sparse_matrix"
@@ -54,11 +64,15 @@ NULL
 
 #' @export
 #' @rdname saveSparseMatrix
-setMethod("saveObject", "sparseMatrix", function(x, path, ...) .save_compressed_sparse_matrix(x, path, ...))
+setMethod("saveObject", "sparseMatrix", function(x, path, array.dedup.session=NULL, array.dedup.action="link", ...) {
+    .save_compressed_sparse_matrix(x, path, array.dedup.session=array.dedup.session, array.dedup.action=array.dedup.action, ...)
+})
 
 #' @export
 #' @rdname saveSparseMatrix
-setMethod("saveObject", "SVT_SparseMatrix", function(x, path, ...) .save_compressed_sparse_matrix(x, path, ...))
+setMethod("saveObject", "SVT_SparseMatrix", function(x, path, array.dedup.session=NULL, array.dedup.action="link", ...) {
+    .save_compressed_sparse_matrix(x, path, array.dedup.session=array.dedup.session, array.dedup.action=array.dedup.action, ...)
+})
 
 ##############################
 ######### INTERNALS ##########
