@@ -193,6 +193,8 @@ test_that("saveObject works correctly for unknown dense DelayedArrays", {
 })
 
 test_that("saveObject deduplicates dense arrays correctly", {
+    skip_on_os("windows")
+
     mat <- matrix(runif(5000), 50, 100)
     tmp <- tempfile()
     session <- createDedupSession()
@@ -203,35 +205,25 @@ test_that("saveObject deduplicates dense arrays correctly", {
     tmp2 <- tempfile()
     saveObject(mat, tmp2, array.dedup.session=session, array.dedup.action="symlink")
     expect_identical(as.matrix(readObject(tmp2)), mat)
-
-    # Check that a symlink is actually formed.
-    if (.Platform$OS.type != "windows") {
-        expect_true(Sys.readlink(file.path(tmp2, "OBJECT")) != "")
-    }
+    expect_true(Sys.readlink(file.path(tmp2, "OBJECT")) != "") # Check that a symlink is actually formed.
 
     # Check that we get the same result from a pristine DelayedArray.
     tmp3 <- tempfile()
     saveObject(DelayedArray(mat), tmp3, array.dedup.session=session, array.dedup.action="symlink")
     expect_identical(as.matrix(readObject(tmp3)), mat)
-    if (.Platform$OS.type != "windows") {
-        expect_true(Sys.readlink(file.path(tmp3, "OBJECT")) != "")
-    }
+    expect_true(Sys.readlink(file.path(tmp3, "OBJECT")) != "")
 
     # Deduplication works for DelayedArrays wrapping dense matrices.
     tmp4a <- tempfile()
     delayed <- DelayedArray(mat) * 2
     saveObject(delayed, tmp4a, array.dedup.session=session, array.dedup.action="symlink")
     expect_identical(as.matrix(readObject(tmp4a)), as.matrix(delayed))
-    if (.Platform$OS.type != "windows") {
-        expect_true(Sys.readlink(file.path(tmp4a, "OBJECT")) == "")
-    }
+    expect_true(Sys.readlink(file.path(tmp4a, "OBJECT")) == "")
 
     tmp4b <- tempfile()
     saveObject(delayed, tmp4b, DelayedArray.dispatch.pristine=FALSE, array.dedup.session=session, array.dedup.action="symlink")
     expect_identical(as.matrix(readObject(tmp4b)), as.matrix(delayed))
-    if (.Platform$OS.type != "windows") {
-        expect_true(Sys.readlink(file.path(tmp4b, "OBJECT")) != "")
-    }
+    expect_true(Sys.readlink(file.path(tmp4b, "OBJECT")) != "")
 })
 
 test_that("saveObject works correctly with dense block processing", {
