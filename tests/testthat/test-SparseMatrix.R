@@ -395,3 +395,17 @@ test_that("saveObject deduplicates sparse arrays correctly", {
     expect_identical(as.matrix(readObject(tmp4b)), unname(as.matrix(delayed)))
     expect_true(Sys.readlink(file.path(tmp4b, "OBJECT")) != "")
 })
+
+test_that("saveObject works correctly with empty matrices", {
+    x <- Matrix::rsparsematrix(0, 20, 0.1)
+    tmp <- tempfile()
+    saveObject(x, tmp)
+    roundtrip <- readObject(tmp)
+    expect_identical(as(roundtrip, "CsparseMatrix"), x)
+
+    x2 <- DelayedArray(x) * 1
+    tmp <- tempfile()
+    saveObject(x2, tmp)
+    roundtrip <- readObject(tmp)
+    expect_identical(as(roundtrip, "CsparseMatrix"), as(x2, "CsparseMatrix"))
+})

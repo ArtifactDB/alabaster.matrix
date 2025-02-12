@@ -294,3 +294,17 @@ test_that("output grid creation works as expected", {
     grid <- alabaster.matrix:::create_output_grid(c(100L, 20L), c(7L, 3L), 30000)
     expect_identical(grid@spacings, c(100L, 20L))
 })
+
+test_that("saveObject works correctly with empty arrays", {
+    x <- matrix(1, 100, 0)
+    tmp <- tempfile()
+    saveObject(x, tmp)
+    roundtrip <- readObject(tmp)
+    expect_identical(as.array(roundtrip), x)
+
+    x2 <- DelayedArray(x) * 1
+    tmp <- tempfile()
+    saveObject(x2, tmp)
+    roundtrip <- readObject(tmp)
+    expect_identical(as.array(roundtrip), as.matrix(x2))
+})
