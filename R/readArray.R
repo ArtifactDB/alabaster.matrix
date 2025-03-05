@@ -43,19 +43,32 @@ readArray <- function(path, metadata, ...) {
         type <- h5_read_attribute(ghandle, "type")
         transposed <- h5_read_attribute(ghandle, "transposed", check=TRUE, default=0L)
 
-        dhandle <- H5Dopen(ghandle, "data")
-        on.exit(H5Dclose(dhandle), add=TRUE, after=FALSE)
-        placeholder <- h5_read_attribute(dhandle, "missing-value-placeholder", check=TRUE, default=NULL)
+        if (type == "vls") {
+            dhandle <- H5Dopen(ghandle, "pointers")
+            on.exit(H5Dclose(dhandle), add=TRUE, after=FALSE)
+        } else {
+            dhandle <- H5Dopen(ghandle, "data")
+            on.exit(H5Dclose(dhandle), add=TRUE, after=FALSE)
+        }
 
+        placeholder <- h5_read_attribute(dhandle, "missing-value-placeholder", check=TRUE, default=NULL)
         ndims <- H5Sget_simple_extent_dims(H5Dget_space(dhandle))$rank
         names <- load_names(ghandle, ndims)
 
         list(type=type, names=names, transposed=(transposed != 0L), placeholder=placeholder)
     })
 
-    out <- HDF5Array(filepath=fpath, name="dense_array/data")
-    if (type(out) == "raw") { # ... so that placeholders are correctly substituted.
-        type(out) <- "integer"
+    if (details$type == "vls") {
+        # TODO: perhaps write a delayed version of this. 
+        out <- h5_read_vls_array(fpath, "dense_array/pointers", "dense_array/heap", missing.placeholder=details$placeholder, native=!details$transposed)
+        details$type <- "string"
+        details$placeholder <- NULL
+        details$transposed <- TRUE
+    } else {
+        out <- HDF5Array(filepath=fpath, name="dense_array/data")
+        if (type(out) == "raw") { # ... so that placeholders are correctly substituted.
+            type(out) <- "integer"
+        }
     }
 
     if (!is.null(details$names)) {

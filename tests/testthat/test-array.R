@@ -308,3 +308,34 @@ test_that("saveObject works correctly with empty arrays", {
     roundtrip <- readObject(tmp)
     expect_identical(as.array(roundtrip), as.matrix(x2))
 })
+
+test_that("saveObject works correctly with VLS arrays", {
+    tmp <- tempfile()
+    dir.create(tmp)
+
+    NR <- 10
+    NC <- 12
+    x <- matrix(sample(c("A", "BC", "DEFG", "HIJKL", "MNOP", "QRS", "TU", "V"), NR * NC, replace=TRUE), NR, NC)
+
+    saveObject(x, file.path(tmp, "basic"), array.character.vls=TRUE)
+    reloaded <- readObject(file.path(tmp, "basic")) 
+    expect_identical(x, as.matrix(reloaded))
+
+    y <- x
+    y[2] <- NA
+    saveObject(y, file.path(tmp, "with_missing"), array.character.vls=TRUE)
+    reloaded <- readObject(file.path(tmp, "with_missing")) 
+    expect_identical(y, as.matrix(reloaded))
+
+    y <- x
+    dimnames(y) <- list(letters[1:NR], seq_len(NC))
+    saveObject(y, file.path(tmp, "named"), array.character.vls=TRUE)
+    reloaded <- readObject(file.path(tmp, "named")) 
+    expect_identical(y, as.matrix(reloaded))
+
+    y <- x
+    y[4] <- strrep("HIJKL", 100)
+    saveObject(y, file.path(tmp, "auto"), array.character.vls=NULL)
+    reloaded <- readObject(file.path(tmp, "auto")) 
+    expect_identical(y, as.matrix(reloaded))
+})

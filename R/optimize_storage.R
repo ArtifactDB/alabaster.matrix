@@ -311,11 +311,13 @@ setGeneric("collect_string_attributes", function(x) standardGeneric("collect_str
 
 setMethod("collect_string_attributes", "ANY", function(x) {
     collected <- blockApply(x, function(y) {
+        strlen <- nchar(y, "bytes")
         list(
             has_na1=any(y == "NA", na.rm=TRUE),
             has_na2=any(y == "_NA", na.rm=TRUE),
-            max_len=suppressWarnings(max(nchar(y, "bytes"), na.rm=TRUE)),
-            missing=anyNA(y),
+            max_len=suppressWarnings(max(strlen, na.rm=TRUE)),
+            total_len=sum(strlen, na.rm=TRUE),
+            num_missing=sum(is.na(y)),
             encoding=unique(Encoding(y))
         )
     })
@@ -324,7 +326,8 @@ setMethod("collect_string_attributes", "ANY", function(x) {
         has_na1=aggregate_any(collected, "has_na1"),
         has_na2=aggregate_any(collected, "has_na2"),
         max_len=aggregate_max(collected, "max_len"),
-        missing=aggregate_any(collected, "missing"),
+        total_len=aggregate_sum(collected, "total_len"),
+        num_missing=aggregate_sum(collected, "num_missing"),
         encoding=Reduce(union, lapply(collected, function(y) y$encoding))
     )
 })
@@ -333,7 +336,7 @@ optimize_string_storage <- function(x) {
     attr <- collect_string_attributes(x)
 
     placeholder <- NULL
-    if (attr$missing) {
+    if (attr$num_missing > 0L) {
         if (!attr$has_na1) {
             placeholder <- "NA"
         } else if (!attr$has_na2) {
@@ -342,7 +345,9 @@ optimize_string_storage <- function(x) {
             u <- Reduce(union, blockApply(x, function(y) unique(as.vector(y))))
             placeholder <- chooseMissingPlaceholderForHdf5(u)
         }
-        attr$max_len <- max(attr$max_len, nchar(placeholder, "bytes"))
+        plclen <- nchar(placeholder, "bytes")
+        attr$max_len <- max(attr$max_len, plclen)
+        attr$total_len <- attr$total_len + plclen * attr$num_missing
     }
 
     tid <- H5Tcopy("H5T_C_S1")
@@ -354,7 +359,7 @@ optimize_string_storage <- function(x) {
         H5Tset_cset(tid, "ASCII")
     }
 
-    list(type=tid, placeholder=placeholder)
+    list(type=tid, placeholder=placeholder, max_len=attr$max_len, total_len=attr$total_len)
 }
 
 ###################################################

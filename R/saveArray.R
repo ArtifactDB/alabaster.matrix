@@ -8,6 +8,8 @@
 #' @param array.dedup.session A session object created by \code{\link[alabaster.base]{createDedupSession}},
 #' specifying which objects should be deduplicated if the same \code{x} is encountered multiple times.
 #' @param array.dedup.action String specifying how deduplication should occur, see options for the \code{action=} argument in \code{\link[alabaster.base]{cloneDirectory}}.
+#' @param array.character.vls Logical scalar indicating whether to save character arrays in the custom variable length string (VLS) array format.
+#' If \code{NULL}, this is determined based on a comparison of the expected storage against a fixed length array.
 #' @param ... Further arguments, currently ignored.
 #' 
 #' @details
@@ -44,7 +46,7 @@
 NULL
 
 #' @import alabaster.base rhdf5
-.save_array <- function(x, path, extract.native=NULL, array.dedup.session=NULL, array.dedup.action="link", ...) {
+.save_array <- function(x, path, extract.native=NULL, array.dedup.session=NULL, array.dedup.action="link", array.character.vls=FALSE, ...) {
     if (!is.null(array.dedup.session)) {
         dedup.path <- checkObjectInDedupSession(x, array.dedup.session)
         if (!is.null(dedup.path)) {
@@ -59,39 +61,69 @@ NULL
     name <- "dense_array"
 
     fhandle <- H5Fcreate(fpath, "H5F_ACC_TRUNC")
-    on.exit(H5Fclose(fhandle), add=TRUE, after=FALSE)
-
+    on.exit(.H5Fclose_null(fhandle), add=TRUE, after=FALSE)
     ghandle <- H5Gcreate(fhandle, name)
-    on.exit(H5Gclose(ghandle), add=TRUE, after=FALSE)
-
-    h5_write_attribute(ghandle, "type", array_type(x), scalar=TRUE)
-    h5_write_attribute(ghandle, "transposed", 1L, scalar=TRUE)
+    on.exit(.H5Gclose_null(ghandle), add=TRUE, after=FALSE)
 
     optimized <- optimize_storage(x)
-    h5_write_array(
-        ghandle, 
-        name="data", 
-        x=x, 
-        type=optimized$type, 
-        placeholder=optimized$placeholder, 
-        extract.native=extract.native
-    )
 
-    if (!is.null(optimized$placeholder)) {
+    # Only enabling VLS for character matrices, to keep things simple.
+    saved.vls <- FALSE
+    if (is.character(x) && !isFALSE(array.character.vls)) {
+        if (is.null(array.character.vls)) {
+            N <- length(x)
+            array.character.vls <- (optimized$total_len + 16 * N < optimized$max_len * N)
+        }
+        if (array.character.vls) {
+            ghandle <- .H5Gclose_null(ghandle)
+            fhandle <- .H5Fclose_null(fhandle)
+            saved.vls <- TRUE
+            h5_write_vls_array(
+                fpath,
+                name,
+                "pointers",
+                "heap",
+                x,
+                compress=getHDF5DumpCompressionLevel(),  
+                chunks=getHDF5DumpChunkDim(dim(x))
+            )
+            fhandle <- H5Fopen(fpath)
+            ghandle <- H5Gopen(fhandle, name)
+            h5_write_attribute(ghandle, "type", "vls", scalar=TRUE)
+        }
+    }
+
+    if (saved.vls) {
+        dhandle <- H5Dopen(ghandle, "pointers")
+        on.exit(H5Dclose(dhandle), add=TRUE, after=FALSE)
+    } else {
+        h5_write_array(
+            ghandle, 
+            name="data", 
+            x=x, 
+            type=optimized$type, 
+            placeholder=optimized$placeholder, 
+            extract.native=extract.native
+        )
+        h5_write_attribute(ghandle, "type", array_type(x), scalar=TRUE)
         dhandle <- H5Dopen(ghandle, "data")
         on.exit(H5Dclose(dhandle), add=TRUE, after=FALSE)
+    }
+
+    if (!is.null(optimized$placeholder)) {
         h5_write_attribute(dhandle, missingPlaceholderName, optimized$placeholder, type=optimized$type, scalar=TRUE)
     }
 
+    h5_write_attribute(ghandle, "transposed", 1L, scalar=TRUE)
     save_names(ghandle, x, transpose=TRUE)
-    saveObjectFile(path, name, list(dense_array=list(version="1.0")))
+    saveObjectFile(path, name, list(dense_array=list(version="1.1")))
     invisible(NULL)
 }
 
 #' @export
 #' @rdname saveArray
-setMethod("saveObject", "array", function(x, path, array.dedup.session=NULL, array.dedup.action="link", ...) {
-    .save_array(x, path, extract.native=identity, array.dedup.session=array.dedup.session, array.dedup.action=array.dedup.action, ...)
+setMethod("saveObject", "array", function(x, path, array.dedup.session=NULL, array.dedup.action="link", array.character.vls=FALSE, ...) {
+    .save_array(x, path, extract.native=identity, array.dedup.session=array.dedup.session, array.dedup.action=array.dedup.action, array.character.vls=array.character.vls, ...)
 })
 
 #' @export

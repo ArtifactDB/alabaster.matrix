@@ -82,3 +82,19 @@ try_altSaveObject <- function(x, ...) {
     }
     return(FALSE)
 }
+
+#' @import rhdf5
+.H5Fclose_null <- function(handle) {
+    if (!is.null(handle)) {
+        H5Fclose(handle)
+    }
+    NULL
+}
+
+#' @import rhdf5
+.H5Gclose_null <- function(handle) {
+    if (!is.null(handle)) {
+        H5Gclose(handle)
+    }
+    NULL
+}

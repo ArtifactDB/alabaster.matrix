@@ -13,6 +13,7 @@
   path,
   array.dedup.session = NULL,
   array.dedup.action = "link",
+  array.character.vls = FALSE,
   ...
 )
 
@@ -34,6 +35,9 @@ Alternatively, any of the \linkS4class{denseMatrix} subclasses from the \pkg{Mat
 specifying which objects should be deduplicated if the same \code{x} is encountered multiple times.}
 
 \item{array.dedup.action}{String specifying how deduplication should occur, see options for the \code{action=} argument in \code{\link[alabaster.base]{cloneDirectory}}.}
+
+\item{array.character.vls}{Logical scalar indicating whether to save character arrays in the custom variable length string (VLS) array format.
+If \code{NULL}, this is determined based on a comparison of the expected storage against a fixed length array.}
 
 \item{...}{Further arguments, currently ignored.}
 }

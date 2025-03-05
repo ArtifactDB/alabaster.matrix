@@ -10,6 +10,9 @@ This also allows deduplication of external DelayedArray seeds if they have alrea
 
 \item Added a \code{DelayedArray.force.external=} argument to the \code{saveObject()} method for DelayedArrays.
 This is a more convenient way of forcing seeds to be saved as external arrays for deduplication.
+
+\item Support the new custom variable length string format for storing character arrays in HDF5.
+This is controlled by the \code{array.character.vls=} option in the array's \code{saveObject()} method.
 }}
 
 \section{Version 1.6.0}{\itemize{
