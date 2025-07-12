@@ -51,7 +51,7 @@ readArray <- function(path, metadata, ...) {
             on.exit(H5Dclose(dhandle), add=TRUE, after=FALSE)
         }
 
-        placeholder <- h5_read_attribute(dhandle, "missing-value-placeholder", check=TRUE, default=NULL)
+        placeholder <- h5_read_attribute(dhandle, "missing-value-placeholder", check=TRUE, default=NULL, bit64conversion="double")
         ndims <- H5Sget_simple_extent_dims(H5Dget_space(dhandle))$rank
         names <- load_names(ghandle, ndims)
 
@@ -65,10 +65,19 @@ readArray <- function(path, metadata, ...) {
         details$placeholder <- NULL
         details$transposed <- TRUE
     } else {
-        out <- HDF5Array(filepath=fpath, name="dense_array/data")
-        if (type(out) == "raw") { # ... so that placeholders are correctly substituted.
-            type(out) <- "integer"
-        }
+        curtype <- switch(details$type,
+            integer="integer",
+            number="double",
+            boolean={
+                if (is.null(details$placeholder)) {
+                    "logical"
+                } else {
+                    "integer" # as we need to map integers to NAs by comparing to the placeholder.
+                }
+            },
+            NA
+        )
+        out <- HDF5Array(filepath=fpath, name="dense_array/data", type=curtype)
     }
 
     if (!is.null(details$names)) {
@@ -80,10 +89,9 @@ readArray <- function(path, metadata, ...) {
     if (!is.null(details$placeholder)) {
         out <- DelayedMask(out, placeholder=details$placeholder)
         out <- DelayedArray(out)
-    }
-    intended.type <- from_array_type(details$type)
-    if (type(out) != intended.type) {
-        type(out) <- intended.type
+        if (details$type == "boolean") {
+            type(out) <- "logical"
+        }
     }
 
     ReloadedArray(path=path, seed=out)
