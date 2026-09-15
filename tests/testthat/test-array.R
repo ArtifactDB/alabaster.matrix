@@ -82,10 +82,21 @@ test_that("saveObject type optimization works as expected for integers", {
     tmp <- tempfile()
     saveObject(mat, tmp)
     expect_identical(as.matrix(readObject(tmp)), mat)
+
+    # Promoted to uint32.
+    mat <- trunc(matrix(runif(1000, 0, 3e9), 40, 25))
+    tmp <- tempfile()
+    saveObject(mat, tmp)
+    expect_identical(as.matrix(readObject(tmp)), mat)
+
+    mat[100] <- NA
+    tmp <- tempfile()
+    saveObject(mat, tmp)
+    expect_identical(as.matrix(readObject(tmp)), mat)
 })
 
 test_that("saveObject works as expected for floats", {
-    mat <- matrix(rnorm(1000, -1e6, 1e6), 40, 25)
+    mat <- matrix(runif(1000, -1e6, 1e6), 40, 25)
     tmp <- tempfile()
     saveObject(mat, tmp)
     expect_identical(as.matrix(readObject(tmp)), mat)
